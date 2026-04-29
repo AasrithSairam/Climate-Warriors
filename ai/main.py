@@ -65,8 +65,18 @@ async def synthesize_records(req: SynthesisRequest):
         Keep it encouraging and easy to understand (avoid overly complex medical jargon).
         Format your response nicely with bullet points. Do not hallucinante.
         """
-        response = model.generate_content(prompt)
-        return {"summary": response.text, "is_structured": False}
+        try:
+            response = model.generate_content(prompt)
+            summary_text = response.text
+        except Exception as e:
+            print("Gemini API failed:", e)
+            summary_text = f"### AI Health Insights for {req.patient_name}\n\n"
+            summary_text += f"- **Allergies:** {req.allergies}\n"
+            summary_text += f"- **Chronic Conditions:** {req.chronic_conditions}\n"
+            summary_text += f"- **Recent Activity:** Found {len(req.records)} medical records across different specialties.\n"
+            summary_text += f"\n*Note: This is a local fallback summary because the Gemini API Key is missing or invalid.*"
+            
+        return {"summary": summary_text, "is_structured": False}
     else:
         # Generate Doctor 10-Second Snapshot
         prompt = f"""
@@ -88,8 +98,19 @@ async def synthesize_records(req: SynthesisRequest):
         
         Keep each section extremely brief (bullet points). Do NOT hallucinate data.
         """
-        response = model.generate_content(prompt)
-        return {"summary": response.text, "is_structured": True}
+        try:
+            response = model.generate_content(prompt)
+            summary_text = response.text
+        except Exception as e:
+            print("Gemini API failed:", e)
+            summary_text = f"### 10-Second Snapshot for {req.doctor_specialty}\n\n"
+            summary_text += f"**1. Conditions:** {req.chronic_conditions}\n\n"
+            summary_text += f"**2. Allergies:** {req.allergies}\n\n"
+            summary_text += f"**3. Current Medications:** Please check timeline for prescriptions.\n\n"
+            summary_text += f"**4. Key Risks:** None immediately identified via fallback.\n\n"
+            summary_text += f"\n*Note: This is a local fallback summary because the Gemini API Key is missing or invalid.*"
+            
+        return {"summary": summary_text, "is_structured": True}
 
 @app.post("/api/chat")
 async def chat_with_data(req: ChatRequest):

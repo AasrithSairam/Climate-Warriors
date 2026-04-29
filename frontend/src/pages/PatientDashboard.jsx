@@ -192,6 +192,7 @@ export default function PatientDashboard({ user }) {
                     <h3 className="mb-2">Profile</h3>
                     <p className="text-sm"><strong>Allergies:</strong> {profile.allergies}</p>
                     <p className="text-sm mt-1"><strong>Chronic Conditions:</strong> {profile.chronicConditions}</p>
+                    <p className="text-sm mt-1"><strong>Diagnosed Diseases:</strong> {profile.medicalRecords.filter(r => r.title.toLowerCase().includes('diagnosis')).map(r => r.title.replace(/ diagnosis/i, '')).join(', ') || 'None found in records'}</p>
                   </div>
                   
                   <div className="glass-card" style={{borderTop: '4px solid var(--warning)'}}>
