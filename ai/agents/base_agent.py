@@ -14,7 +14,7 @@ vision_model_name = "llama-3.2-11b-vision-preview"
 
 if api_key and api_key.startswith("xai-"):
     base_url = "https://api.x.ai/v1"
-    model_name = "grok-2-latest"
+    model_name = "grok-beta"
     vision_model_name = "grok-vision-beta"
 
 # Initialize client

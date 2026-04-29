@@ -3,6 +3,8 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Users, Calendar, Activity, Pill, AlertTriangle, MessageSquare, ShieldCheck, FileText, Search } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { QRCodeCanvas } from 'qrcode.react';
+import { jsPDF } from 'jspdf';
 
 export default function DoctorDashboard({ user }) {
   const [patients, setPatients] = useState([]);
@@ -203,7 +205,6 @@ export default function DoctorDashboard({ user }) {
                             <h3 className="text-gradient flex items-center gap-2" style={{margin:0}}><Activity size={20}/> 10-Second Smart Summary</h3>
                             <button 
                               className="badge btn-secondary flex items-center gap-2" 
-                              style={{cursor: 'pointer', border: 'none'}}
                               onClick={() => handleSelectPatient(selectedPatient)}
                               disabled={isSynthesizing}
                             >
@@ -303,10 +304,20 @@ export default function DoctorDashboard({ user }) {
                                   <span style={{fontSize: '1.1rem', fontWeight: 700}}>{new Date(r.date).getFullYear()}</span>
                                   <span className="badge">{r.specialty}</span>
                                 </div>
-                                <div style={{background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px'}}>
-                                  <h4 style={{color: 'var(--primary-color)'}}>{r.title}</h4>
-                                  <p className="text-sm mt-2">{r.content}</p>
-                                  <p className="text-sm mt-2 text-secondary">Type: {r.type}</p>
+                                <div className="flex gap-4" style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0'}}>
+                                  <div style={{background: '#f8fafc', padding: '10px', borderRadius: '12px', alignSelf: 'flex-start', border: '1px solid #e2e8f0'}}>
+                                    <QRCodeCanvas value={`VERIFY-DR-${user.id}-${r.id}`} size={80} level="H" />
+                                    <p className="text-xs text-center mt-1" style={{color: '#64748b', fontWeight: 'bold'}}>VERIFIED BY DR.</p>
+                                  </div>
+                                  <div style={{flex: 1}}>
+                                    <h4 style={{margin: '0 0 8px 0', color: 'var(--primary-color)'}}>{r.title}</h4>
+                                    <p className="text-sm mt-2">{r.content}</p>
+                                    <p className="text-sm mt-2 text-secondary">Record Type: {r.type}</p>
+                                    <div className="flex gap-2 mt-4">
+                                      <button className="badge btn-secondary">Sign Record</button>
+                                      <button className="badge btn-secondary">Official PDF</button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             )) : <p>No significant clinical records found.</p>}

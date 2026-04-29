@@ -24,7 +24,7 @@ export default function Login({ setUser }) {
   };
 
   return (
-    <div className="flex justify-center items-center h-full animate-fade-in" style={{background: 'var(--bg-color)', minHeight: 'calc(100vh - 70px)'}}>
+    <div className="flex justify-center items-center h-full animate-fade-in" style={{background: 'var(--bg-light)', minHeight: 'calc(100vh - 70px)'}}>
       <div className="glass-card flex" style={{padding: 0, maxWidth: '900px', width: '100%', overflow: 'hidden'}}>
         
         {/* Left Side Branding */}

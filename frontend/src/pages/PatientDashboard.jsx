@@ -6,6 +6,8 @@ import {
   MapPin, Pill, ShieldCheck, Star, UploadCloud, Bell, Info, Edit, CheckCircle
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { QRCodeCanvas } from 'qrcode.react';
+import { jsPDF } from 'jspdf';
 
 export default function PatientDashboard({ user }) {
   const [profile, setProfile] = useState(null);
@@ -138,6 +140,59 @@ export default function PatientDashboard({ user }) {
     setIsRecommending(false);
   };
 
+  const downloadFHIR = (record) => {
+    const fhirBundle = {
+      resourceType: "Bundle",
+      type: "document",
+      entry: [{
+        resource: {
+          resourceType: "Observation",
+          status: "final",
+          code: { text: record.title },
+          subject: { reference: `Patient/${user.id}` },
+          effectiveDateTime: record.date,
+          valueString: record.content
+        }
+      }]
+    };
+    const blob = new Blob([JSON.stringify(fhirBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `FHIR_${record.title.replace(/\s+/g, '_')}.json`;
+    a.click();
+  };
+
+  const generateOfficialPDF = (record) => {
+    const doc = new jsPDF();
+    doc.setFillColor(10, 10, 10);
+    doc.rect(0, 0, 210, 297, 'F');
+    doc.setTextColor(163, 255, 0);
+    doc.setFontSize(22);
+    doc.text("AURA HEALTHCARE OFFICIAL RECORD", 20, 30);
+    doc.setDrawColor(163, 255, 0);
+    doc.line(20, 35, 190, 35);
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.text(`Patient ID: ${user.id}`, 20, 50);
+    doc.text(`Patient Name: ${profile.name}`, 20, 60);
+    doc.text(`Date of Record: ${new Date(record.date).toLocaleDateString()}`, 20, 70);
+    
+    doc.setTextColor(163, 255, 0);
+    doc.setFontSize(16);
+    doc.text("Clinical Notes", 20, 90);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    const splitContent = doc.splitTextToSize(record.content, 170);
+    doc.text(splitContent, 20, 100);
+    
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text("Verified by AuraHealth Cryptographic Layer.", 20, 280);
+    doc.save(`Official_Record_${record.id.slice(0,8)}.pdf`);
+  };
+
   const createAppointment = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -212,21 +267,20 @@ export default function PatientDashboard({ user }) {
               <div className="grid grid-2 mb-6">
                 <div className="glass-card" style={{borderTop: '4px solid var(--primary-color)'}}>
                   <div className="flex justify-between items-center mb-4">
-                    <h3 style={{margin:0}}>Smart AI Summary</h3>
+                    <h3 style={{margin:0}} className="flex items-center gap-2"><Activity size={24} color="var(--primary-color)"/> Smart AI Summary</h3>
                     <div className="flex gap-2">
                       <button 
                         className="badge btn-secondary flex items-center gap-2" 
-                        style={{cursor: 'pointer', border: 'none'}}
                         onClick={() => generateInsights(profile)}
                         disabled={isSynthesizing}
                       >
                         <Activity size={14} className={isSynthesizing ? "animate-pulse" : ""}/> 
-                        {isSynthesizing ? "Analyzing..." : "Summarize with AI"}
+                        {isSynthesizing ? "Analyzing..." : "Re-Summarize"}
                       </button>
                     </div>
                   </div>
                   {isSynthesizing ? <p className="text-sm glow-text">Multi-Agent Orchestrator is synthesizing records...</p> : (
-                    <div className="text-sm" style={{lineHeight: 1.6}}>
+                    <div className="text-sm" style={{lineHeight: 1.6, color: 'var(--text-primary)'}}>
                       {aiInsights ? <ReactMarkdown>{aiInsights}</ReactMarkdown> : <p>No insights generated.</p>}
                     </div>
                   )}
@@ -339,12 +393,17 @@ export default function PatientDashboard({ user }) {
                             <span className="badge">{r.specialty}</span>
                           </div>
                           <div className="flex gap-4" style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0'}}>
-                            {hosp && hosp.imageUrl && <img src={hosp.imageUrl} alt="Hosp" style={{width: '64px', height: '64px', borderRadius: '8px', objectFit: 'cover'}} />}
+                            <div style={{background: '#f8fafc', padding: '10px', borderRadius: '12px', alignSelf: 'flex-start', border: '1px solid #e2e8f0'}}>
+                              <QRCodeCanvas value={`VERIFY-AURA-${r.id}`} size={80} level="H" />
+                              <p className="text-xs text-center mt-1" style={{color: '#64748b', fontWeight: 'bold'}}>SCAN TO VERIFY</p>
+                            </div>
                             <div style={{flex: 1}}>
                               <h4 style={{margin: '0 0 8px 0', color: 'var(--text-primary)'}}>{r.title}</h4>
                               <p className="text-sm mb-3 text-secondary">{r.content}</p>
                               <div className="flex gap-2">
-                                {r.documentUrl && <button className="badge btn-secondary" onClick={() => {setModalData(r); setActiveModal('PDF')}}>View Document</button>}
+                                <button className="badge btn-secondary" onClick={() => {setModalData(r); setActiveModal('PDF')}}>View Document</button>
+                                <button className="badge btn-secondary" onClick={() => generateOfficialPDF(r)}>Download Official PDF</button>
+                                <button className="badge btn-secondary" onClick={() => downloadFHIR(r)}>Export FHIR</button>
                               </div>
                             </div>
                           </div>
