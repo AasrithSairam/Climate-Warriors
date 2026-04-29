@@ -49,8 +49,11 @@ export default function PatientDashboard({ user }) {
     try {
       // Try to fetch from Orchestrator (Simulation Mode)
       const res = await axios.get(`http://localhost:8005/patient/${user.id}/context?encounter_type=general`);
-      setAgentData(res.data.brief);
-      setAiInsights(res.data.brief.clinical_brief);
+      
+      // The structure is double nested { brief: { brief: { ... } } } from simulation mode
+      const briefData = res.data.brief.brief || res.data.brief;
+      setAgentData(briefData);
+      setAiInsights(briefData.clinical_brief);
     } catch (e) { 
       console.warn("AI Service unavailable, triggering Super Demo Mode.");
       
@@ -112,7 +115,7 @@ export default function PatientDashboard({ user }) {
       alert('Smart Vision Agent has processed and stored your record.');
       setActiveModal(null); fetchData();
     } catch (e) {
-      alert('AI processing failed. Ensure Ollama is running with llama3.2-vision.');
+      alert('AI processing failed. Please ensure the AI service is running on port 8005.');
       console.error(e);
     }
     setIsSynthesizing(false);
@@ -129,7 +132,7 @@ export default function PatientDashboard({ user }) {
     if(!bookingIssue) return;
     setIsRecommending(true);
     try {
-      const res = await axios.post('http://localhost:8000/api/recommend-hospital', { issue: bookingIssue, hospitals: allHospitals });
+      const res = await axios.post('http://localhost:8005/api/recommend-hospital', { issue: bookingIssue, hospitals: allHospitals });
       setAiRecommendation(res.data.recommendation);
     } catch (e) { console.error(e); }
     setIsRecommending(false);
@@ -210,7 +213,17 @@ export default function PatientDashboard({ user }) {
                 <div className="glass-card" style={{borderTop: '4px solid var(--primary-color)'}}>
                   <div className="flex justify-between items-center mb-4">
                     <h3 style={{margin:0}}>Smart AI Summary</h3>
-                    <Activity color="var(--primary-color)" />
+                    <div className="flex gap-2">
+                      <button 
+                        className="badge btn-secondary flex items-center gap-2" 
+                        style={{cursor: 'pointer', border: 'none'}}
+                        onClick={() => generateInsights(profile)}
+                        disabled={isSynthesizing}
+                      >
+                        <Activity size={14} className={isSynthesizing ? "animate-pulse" : ""}/> 
+                        {isSynthesizing ? "Analyzing..." : "Summarize with AI"}
+                      </button>
+                    </div>
                   </div>
                   {isSynthesizing ? <p className="text-sm glow-text">Multi-Agent Orchestrator is synthesizing records...</p> : (
                     <div className="text-sm" style={{lineHeight: 1.6}}>
@@ -293,7 +306,25 @@ export default function PatientDashboard({ user }) {
               <div className="glass-card mt-4">
                 <div className="timeline">
                   {[...profile.medicalRecords]
-                    .filter(r => !r.title.includes("Transcribed") && !r.content.includes("Extracted from handwritten"))
+                    .filter(r => {
+                      const title = r.title.toLowerCase();
+                      const isHandwritten = title.includes("transcribed") || r.content.includes("handwritten");
+                      
+                      // 5-Year Filter
+                      const currentYear = new Date().getFullYear();
+                      const recordYear = new Date(r.date).getFullYear();
+                      if (recordYear < currentYear - 5) return false;
+
+                      // Keep only significant clinical categories
+                      const isClinical = r.type === 'CONDITION' || r.type === 'MEDICATION' || r.type === 'SCAN' || 
+                                       title.includes("symptom") || title.includes("diagnosis") || title.includes("risk");
+                      
+                      const isNoise = title.includes("height") || title.includes("weight") || 
+                                      title.includes("score") || title.includes("certificate") || 
+                                      title.includes("education") || title.includes("status");
+                                      
+                      return !isHandwritten && isClinical && !isNoise;
+                    })
                     .sort((a, b) => new Date(b.date) - new Date(a.date))
                     .map((r) => {
                       const hosp = allHospitals.find(h => h.id === r.hospitalId);
@@ -350,7 +381,13 @@ export default function PatientDashboard({ user }) {
                 <div className="mt-8 pt-8 border-t animate-fade-in" style={{borderColor: '#e2e8f0'}}>
                   <h3 className="mb-4">Browsing: {activeFolder}</h3>
                   <div className="flex-col gap-2">
-                    {profile.medicalRecords.filter(r => activeFolder === 'ALL' || (activeFolder==='SCANS' && r.type==='SCAN') || (activeFolder==='REPORTS' && r.type!=='SCAN' && r.type!=='MEDICATION')).map(file => (
+                    {profile.medicalRecords.filter(r => {
+                      const currentYear = new Date().getFullYear();
+                      const recordYear = new Date(r.date).getFullYear();
+                      const isRecent = recordYear >= currentYear - 5;
+                      const matchesFolder = activeFolder === 'ALL' || (activeFolder==='SCANS' && r.type==='SCAN') || (activeFolder==='REPORTS' && r.type!=='SCAN' && r.type!=='MEDICATION');
+                      return isRecent && matchesFolder;
+                    }).map(file => (
                       <div key={file.id} className="file-item" onClick={() => {setModalData(file); setActiveModal('PDF')}}>
                         <div className="flex items-center gap-4">
                           <FileText color="var(--primary-color)" />

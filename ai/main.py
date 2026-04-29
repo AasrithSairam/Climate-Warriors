@@ -6,7 +6,8 @@ import os
 import uvicorn
 
 # Configuration
-DB_PATH = r"c:\Climate-Warriors\backend\prisma\dev.db"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "backend", "prisma", "dev.db")
 orchestrator = Orchestrator(db_path=DB_PATH)
 
 app = FastAPI(title="Smart Medical Passport AI Service")
@@ -60,6 +61,27 @@ async def get_patient_context(
 @app.get("/health")
 async def health_check():
     return {"status": "active", "timestamp": time.time()}
+
+class RecommendRequest(BaseModel):
+    issue: str
+    hospitals: list[dict]
+
+@app.post("/api/recommend-hospital")
+async def recommend_hospital(req: RecommendRequest):
+    try:
+        # Simple logic for hospital recommendation based on specialty match
+        # In a real scenario, this would call an LLM
+        issue_lower = req.issue.lower()
+        recommendation = "I recommend checking with a General Physician."
+        
+        for h in req.hospitals:
+            if h.get('specialties') and any(s.lower() in issue_lower for s in h['specialties'].split(', ')):
+                recommendation = f"I recommend {h['name']} based on their expertise in related specialties."
+                break
+        
+        return {"recommendation": recommendation}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8005)

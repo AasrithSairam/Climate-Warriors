@@ -3,7 +3,7 @@ from .base_agent import BaseAgent
 from memory.fhir_store import FHIRStore
 
 class LabTrendAgent(BaseAgent):
-    model = "jsl-medllm:32b"
+
 
     # LOINC codes for key labs
     KEY_LABS = {

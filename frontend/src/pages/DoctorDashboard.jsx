@@ -40,8 +40,9 @@ export default function DoctorDashboard({ user }) {
       
       const aiRes = await axios.get(`http://127.0.0.1:8005/patient/${p.user.id}/context?encounter_type=${user.specialty}`);
       
-      // Fix: Set the whole brief object so we can access sub-fields in the UI
-      setAiSummary(aiRes.data.brief);
+      // The structure is double nested { brief: { brief: { ... } } } from simulation mode
+      const briefData = aiRes.data.brief.brief || aiRes.data.brief;
+      setAiSummary(briefData);
       p.filteredRecords = recRes.data.records;
     } catch (e) { console.error(e); }
     setIsSynthesizing(false);
@@ -198,11 +199,29 @@ export default function DoctorDashboard({ user }) {
                     <div className="glass-card" style={{flex: 1, overflowY: 'auto'}}>
                       {activeTab === 'SUMMARY' && (
                         <div className="animate-fade-in">
-                          <h3 className="mb-4 text-gradient flex items-center gap-2"><Activity size={20}/> 10-Second Smart Summary</h3>
+                          <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-gradient flex items-center gap-2" style={{margin:0}}><Activity size={20}/> 10-Second Smart Summary</h3>
+                            <button 
+                              className="badge btn-secondary flex items-center gap-2" 
+                              style={{cursor: 'pointer', border: 'none'}}
+                              onClick={() => handleSelectPatient(selectedPatient)}
+                              disabled={isSynthesizing}
+                            >
+                              <Activity size={14} className={isSynthesizing ? "animate-pulse" : ""}/> 
+                              {isSynthesizing ? "Analyzing..." : "Refresh Summary"}
+                            </button>
+                          </div>
                           {isSynthesizing ? <p className="glow-text">Multi-Agent Orchestrator is synthesizing records...</p> : (
                             <div className="markdown-container" style={{lineHeight: 1.6}}>
                               {aiSummary ? (
                                 <div className="flex-col gap-4">
+                                  {aiSummary.clinical_brief && (
+                                    <div className="p-4 mb-4" style={{background: 'rgba(0,240,255,0.05)', borderRadius: '12px', border: '1px solid rgba(0,240,255,0.2)'}}>
+                                      <h4 className="mb-2">Clinical Narrative</h4>
+                                      <ReactMarkdown>{aiSummary.clinical_brief}</ReactMarkdown>
+                                    </div>
+                                  )}
+
                                   {aiSummary.critical_flags && aiSummary.critical_flags.length > 0 && (
                                     <div className="p-4" style={{background: 'rgba(239, 71, 111, 0.1)', borderLeft: '4px solid var(--danger)', borderRadius: '8px'}}>
                                       <h4 style={{color: 'var(--danger)', marginBottom: '8px'}}>Critical Flags</h4>
@@ -265,7 +284,19 @@ export default function DoctorDashboard({ user }) {
                         <div className="animate-fade-in">
                           <h3 className="mb-6 flex items-center gap-2"><Calendar size={20}/> Full Medical History</h3>
                           <div className="timeline">
-                            {selectedPatient.filteredRecords?.length > 0 ? selectedPatient.filteredRecords.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(r => (
+                            {selectedPatient.filteredRecords?.length > 0 ? selectedPatient.filteredRecords
+                              .filter(r => {
+                                const title = r.title.toLowerCase();
+                                const currentYear = new Date().getFullYear();
+                                const recordYear = new Date(r.date).getFullYear();
+                                if (recordYear < currentYear - 5) return false;
+
+                                const isClinical = r.type === 'CONDITION' || r.type === 'MEDICATION' || r.type === 'SCAN' || 
+                                                 title.includes("symptom") || title.includes("diagnosis") || title.includes("risk");
+                                const isNoise = title.includes("height") || title.includes("weight") || title.includes("score") || title.includes("certificate");
+                                return isClinical && !isNoise;
+                              })
+                              .sort((a,b)=>new Date(b.date)-new Date(a.date)).map(r => (
                               <div key={r.id} className="timeline-item">
                                 <div className="timeline-node" style={{background: 'var(--primary-color)', boxShadow: '0 0 10px var(--primary-color)'}}></div>
                                 <div className="flex items-center gap-4 mb-2">
@@ -278,7 +309,7 @@ export default function DoctorDashboard({ user }) {
                                   <p className="text-sm mt-2 text-secondary">Type: {r.type}</p>
                                 </div>
                               </div>
-                            )) : <p>No records found or patient has not consented.</p>}
+                            )) : <p>No significant clinical records found.</p>}
                           </div>
                         </div>
                       )}

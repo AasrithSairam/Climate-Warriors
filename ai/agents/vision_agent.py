@@ -5,7 +5,6 @@ import json
 from agents.base_agent import client, BaseAgent
 
 class VisionAgent(BaseAgent):
-    model = "llama3.2-vision" # Vision capable model
 
     def __init__(self, image_path: str):
         super().__init__(patient_id="vision-stream", consent_scope=["vision"])
@@ -25,18 +24,29 @@ class VisionAgent(BaseAgent):
             - type: 'MEDICATION' or 'NOTE'
             """
 
-            response = client.chat(
-                model=self.model,
+            response = client.chat.completions.create(
+                model=self.vision_model,
                 messages=[
                     {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
                         "role": "user",
-                        "content": "Extract clinical data from this prescription image.",
-                        "images": [img_base64]
+                        "content": [
+                            {"type": "text", "text": "Extract clinical data from this prescription image."},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{img_base64}"
+                                }
+                            }
+                        ]
                     }
                 ],
-                format="json"
+                response_format={"type": "json_object"}
             )
-            return json.loads(response["message"]["content"])
+            return json.loads(response.choices[0].message.content)
         except Exception as e:
             print(f"Vision Agent Connection Error: {e}")
             # DEMO MODE: If Ollama is down, simulate a successful transcription for the presentation

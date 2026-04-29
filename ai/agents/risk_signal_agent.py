@@ -5,7 +5,7 @@ from .base_agent import BaseAgent
 from memory.fhir_store import FHIRStore
 
 class RiskSignalAgent(BaseAgent):
-    model = "llama3.3:70b"   # general LLM fine for risk narrative
+
 
     def __init__(self, patient_id, consent_scope, store: FHIRStore):
         super().__init__(patient_id, consent_scope)

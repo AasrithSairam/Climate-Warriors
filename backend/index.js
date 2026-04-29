@@ -18,26 +18,42 @@ app.use(express.json());
 // Auth
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
+  console.log(`Login attempt: email=${email}, password=${password}`);
   const user = await prisma.user.findUnique({ where: { email } });
-  if (user && user.password === password) {
-    res.json(user);
+  if (user) {
+    console.log(`User found in DB: email=${user.email}, expected_password=${user.password}`);
+    if (user.password === password) {
+      console.log("Login successful");
+      res.json(user);
+    } else {
+      console.log("Password mismatch");
+      res.status(401).json({ error: 'Invalid credentials' });
+    }
   } else {
+    console.log("User not found");
     res.status(401).json({ error: 'Invalid credentials' });
   }
 });
 
 // Patients
 app.get('/api/patients/:id', async (req, res) => {
-  const patient = await prisma.user.findUnique({
-    where: { id: req.params.id },
-    include: {
-      patientHospitals: { include: { hospital: { include: { doctors: { include: { user: true } } } } } },
-      consents: true,
-      patientAppointments: { include: { doctor: true, hospital: true, records: true, triageData: true } },
-      medicalRecords: { include: { appointment: { include: { doctor: true } } } }
-    }
-  });
-  res.json(patient);
+  console.log(`Fetching data for patient: ${req.params.id}`);
+  try {
+    const patient = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      include: {
+        patientHospitals: { include: { hospital: { include: { doctors: { include: { user: true } } } } } },
+        consents: true,
+        patientAppointments: { include: { doctor: true, hospital: true, records: true, triageData: true } },
+        medicalRecords: true
+      }
+    });
+    console.log(`Data found for ${req.params.id}, sending response...`);
+    res.json(patient);
+  } catch (error) {
+    console.error(`Error fetching patient ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Update Profile

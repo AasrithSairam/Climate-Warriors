@@ -1,7 +1,7 @@
 from .base_agent import BaseAgent
 
 class SynthesisAgent(BaseAgent):
-    model = "llama3.3:70b"
+
 
     def __init__(self, patient_id, consent_scope, encounter_type: str):
         super().__init__(patient_id, consent_scope)

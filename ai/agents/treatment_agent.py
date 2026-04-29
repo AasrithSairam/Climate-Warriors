@@ -3,7 +3,7 @@ from memory.fhir_store import FHIRStore
 from memory.vector_store import VectorStore
 
 class TreatmentAgent(BaseAgent):
-    model = "jsl-medllm:32b"
+
 
     def __init__(self, patient_id, consent_scope,
                  fhir: FHIRStore, vectors: VectorStore):

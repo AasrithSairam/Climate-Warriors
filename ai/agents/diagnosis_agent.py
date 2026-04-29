@@ -3,7 +3,7 @@ from memory.fhir_store import FHIRStore
 from memory.episode_graph import EpisodeGraph
 
 class DiagnosisAgent(BaseAgent):
-    model = "jsl-medllm:32b"
+
 
     # ICD-10 groups that cluster comorbidities
     COMORBIDITY_CLUSTERS = {
