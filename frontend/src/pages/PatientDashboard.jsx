@@ -516,67 +516,98 @@ export default function PatientDashboard({ user }) {
 
           <Route path="/doctors" element={
             <div className="stagger-1">
-              <h2 className="text-gradient">Doctors & Visits (Hospital Hub)</h2>
-              <p className="mb-6 text-secondary">Select a connected facility to book appointments and manage data consent.</p>
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-gradient" style={{margin:0}}>Doctors & Visits</h2>
+                  <p className="text-sm text-secondary">Manage your clinical network and book appointments.</p>
+                </div>
+                {!hospitalFilter && (
+                   <div className="flex gap-4">
+                     <div className="text-center"><p className="text-sm text-secondary m-0">Connected Facilities</p><strong style={{fontSize:'1.2rem'}}>{profile.patientHospitals.length}</strong></div>
+                     <div className="text-center"><p className="text-sm text-secondary m-0">Network Doctors</p><strong style={{fontSize:'1.2rem'}}>{profile.patientHospitals.reduce((acc, ph) => acc + ph.hospital.doctors.length, 0)}</strong></div>
+                   </div>
+                )}
+              </div>
               
               {!hospitalFilter ? (
                 <div className="grid grid-2">
                   {profile.patientHospitals.map(ph => (
-                    <div key={ph.id} className="glass-card" style={{padding:0, overflow:'hidden'}}>
-                      {ph.hospital.imageUrl && <img src={ph.hospital.imageUrl} alt="Hospital" className="hospital-image" style={{margin:0, width:'100%', height:'160px', cursor:'pointer'}} onClick={() => setHospitalFilter(ph.hospitalId)}/>}
-                      <div className="p-4" style={{padding: '24px'}}>
-                        <div className="flex justify-between items-start">
-                          <h3 style={{margin:0}}>{ph.hospital.name}</h3>
+                    <div key={ph.id} className="glass-card" style={{padding:0, overflow:'hidden', borderBottom: '4px solid var(--primary-color)'}}>
+                      <div style={{padding: '24px'}}>
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 style={{margin:0}}>{ph.hospital.name}</h3>
+                            <p className="text-sm text-secondary mt-1"><MapPin size={12} className="inline mr-1"/>{ph.hospital.location}</p>
+                          </div>
                           <button className="btn-secondary" style={{padding: '4px 8px', borderRadius: '4px'}} onClick={() => {setModalData(ph.hospital); setActiveModal('HOSPITAL_INFO')}}><Info size={16}/></button>
                         </div>
-                        <p className="text-sm mt-1 text-secondary"><MapPin size={12} className="inline mr-1"/>{ph.hospital.location}</p>
-                        <button className="btn mt-4 w-full" onClick={() => setHospitalFilter(ph.hospitalId)}>Access Facility & Consent</button>
+                        <div className="flex justify-between items-center mt-6">
+                          <p className="text-xs text-secondary">{ph.hospital.doctors.length} Registered Specialists</p>
+                          <button className="btn" style={{padding: '8px 16px', fontSize: '0.8rem'}} onClick={() => setHospitalFilter(ph.hospitalId)}>Access Facility</button>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="glass-card mt-4">
-                  <div className="flex justify-between items-center mb-8">
+                <div className="stagger-1">
+                  <div className="glass-card mb-6 flex justify-between items-center">
                     <div>
-                      <h2 style={{margin:0}}>{allHospitals.find(h=>h.id === hospitalFilter)?.name}</h2>
+                      <h3 style={{margin:0}}>{allHospitals.find(h=>h.id === hospitalFilter)?.name}</h3>
+                      <p className="text-sm text-secondary">Facility Hub • Consent & Booking</p>
                     </div>
-                    <button className="btn-secondary" onClick={() => setHospitalFilter(null)}>Back</button>
+                    <button className="btn-secondary" onClick={() => setHospitalFilter(null)}>Back to Network</button>
                   </div>
 
                   <div className="grid grid-2 gap-8">
-                    {/* Booking Form with AI Recommendation */}
+                    {/* Booking Form */}
                     <div>
-                      <h3 className="mb-4">Book Appointment</h3>
-                      <form onSubmit={createAppointment} className="flex-col gap-2">
-                        <input type="hidden" name="hospitalId" value={hospitalFilter} />
-                        <div>
-                          <label className="text-sm font-bold">Select Specialist</label>
-                          <select name="doctorId" required>
-                            <option value="">Choose...</option>
-                            {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.map(d => (
-                              <option key={d.user.id} value={d.user.id}>{d.user.name} ({d.user.specialty})</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex gap-4 mt-2">
-                          <div style={{flex: 1}}><label className="text-sm font-bold">Date</label><input type="date" name="appointmentDate" required /></div>
-                          <div style={{flex: 1}}><label className="text-sm font-bold">Time</label>
-                            <select name="timeSlot" required><option value="09:00 AM">09:00 AM</option><option value="11:30 AM">11:30 AM</option></select>
+                      <div className="glass-card">
+                        <h3 className="mb-4">Book New Appointment</h3>
+                        <form onSubmit={createAppointment} className="flex-col gap-2">
+                          <input type="hidden" name="hospitalId" value={hospitalFilter} />
+                          <div>
+                            <label className="text-sm font-bold">Select Specialist</label>
+                            <select name="doctorId" required>
+                              <option value="">Choose...</option>
+                              {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.map(d => (
+                                <option key={d.user.id} value={d.user.id}>{d.user.name} ({d.user.specialty})</option>
+                              ))}
+                            </select>
                           </div>
-                        </div>
-                        <div className="mt-4 p-4" style={{background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px'}}>
-                          <label className="text-sm font-bold text-gradient">AI Triage / Recommendation (Optional)</label>
-                          <p className="text-sm text-secondary mb-2">Not sure who to book? Type your issue and AI will suggest the best hospital.</p>
-                          <div className="flex gap-2">
-                            <input type="text" value={bookingIssue} onChange={e=>setBookingIssue(e.target.value)} placeholder="e.g. Chest pain and sweating" />
-                            <button type="button" className="btn-secondary" onClick={getAiRecommendation} disabled={!bookingIssue || isRecommending}>Ask AI</button>
+                          <div className="flex gap-4 mt-2">
+                            <div style={{flex: 1}}><label className="text-sm font-bold">Date</label><input type="date" name="appointmentDate" required /></div>
+                            <div style={{flex: 1}}><label className="text-sm font-bold">Time</label>
+                              <select name="timeSlot" required><option value="09:00 AM">09:00 AM</option><option value="11:30 AM">11:30 AM</option></select>
+                            </div>
                           </div>
-                          {aiRecommendation && <p className="text-sm mt-3" style={{color: 'var(--primary-color)', fontWeight: 600}}><Info size={14} className="inline mr-1"/> {aiRecommendation}</p>}
-                        </div>
-                        <button type="submit" className="btn mt-4 w-full">Confirm Booking</button>
-                      </form>
+                          <button type="submit" className="btn mt-4 w-full">Confirm Booking</button>
+                        </form>
+                      </div>
                     </div>
+
+                    {/* Specialists at this Hospital */}
+                    <div>
+                      <div className="glass-card">
+                        <h3 className="mb-4">Facility Specialists</h3>
+                        <div className="flex-col gap-3">
+                          {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.map(d => (
+                            <div key={d.user.id} className="flex justify-between items-center p-3 border-b" style={{background: 'white', borderRadius: '8px'}}>
+                              <div>
+                                <p style={{margin:0, fontWeight:600}}>{d.user.name}</p>
+                                <p className="text-xs text-secondary">{d.user.specialty}</p>
+                              </div>
+                              <span className="badge">Available</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          } />
 
                     {/* Consent Form */}
                     <div>
