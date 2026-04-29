@@ -35,14 +35,21 @@ export default function PatientDashboard({ user }) {
 
   const fetchData = async () => {
     const pRes = await axios.get(`http://localhost:3001/api/patients/${user.id}`);
-    setProfile(pRes.data);
-    setProfileForm({ phone: pRes.data.phone || '', address: pRes.data.address || '', allergies: pRes.data.allergies, chronicConditions: pRes.data.chronicConditions });
+    const patientData = pRes.data;
+    setProfile(patientData);
+    setProfileForm({ phone: patientData.phone || '', address: patientData.address || '', allergies: patientData.allergies, chronicConditions: patientData.chronicConditions });
+    
+    // Auto-load stored RAG summary
+    const storedSummary = patientData.medicalRecords.find(r => r.type === 'SUMMARY');
+    if (storedSummary) {
+      setAiInsights(storedSummary.content);
+    }
     
     const hRes = await axios.get('http://localhost:3001/api/hospitals');
     setAllHospitals(hRes.data);
     
-    if (pRes.data && pRes.data.medicalRecords.length > 0 && !aiInsights) {
-      generateInsights(pRes.data);
+    if (patientData && patientData.medicalRecords.length > 0 && !storedSummary && !aiInsights) {
+      generateInsights(patientData);
     }
   };
 
@@ -367,15 +374,14 @@ export default function PatientDashboard({ user }) {
                       // 5-Year Filter
                       const currentYear = new Date().getFullYear();
                       const recordYear = new Date(r.date).getFullYear();
-                      if (recordYear < currentYear - 5) return false;
+                      if (recordYear < currentYear - 10) return false;
 
-                      // Keep only significant clinical categories
-                      const isClinical = r.type === 'CONDITION' || r.type === 'MEDICATION' || r.type === 'SCAN' || 
-                                       title.includes("symptom") || title.includes("diagnosis") || title.includes("risk");
+                      // Strict "Official Diagnosis" Filter
+                      const isClinical = r.type === 'CONDITION' || title.includes("diagnosis");
                       
                       const isNoise = title.includes("height") || title.includes("weight") || 
-                                      title.includes("score") || title.includes("certificate") || 
-                                      title.includes("education") || title.includes("status");
+                                      title.includes("score") || title.includes("status") ||
+                                      title.includes("employment") || title.includes("finding");
                                       
                       return !isHandwritten && isClinical && !isNoise;
                     })
@@ -443,7 +449,7 @@ export default function PatientDashboard({ user }) {
                     {profile.medicalRecords.filter(r => {
                       const currentYear = new Date().getFullYear();
                       const recordYear = new Date(r.date).getFullYear();
-                      const isRecent = recordYear >= currentYear - 5;
+                      const isRecent = recordYear >= currentYear - 10;
                       const matchesFolder = activeFolder === 'ALL' || (activeFolder==='SCANS' && r.type==='SCAN') || (activeFolder==='REPORTS' && r.type!=='SCAN' && r.type!=='MEDICATION');
                       return isRecent && matchesFolder;
                     }).map(file => (
