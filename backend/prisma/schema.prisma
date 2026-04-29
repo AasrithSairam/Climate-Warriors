@@ -1,0 +1,124 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  role      String   // "PATIENT" or "DOCTOR"
+  name      String
+  email     String   @unique
+  password  String
+  specialty String?  
+  dob       DateTime? // For the timeline
+  
+  patientHospitals HospitalPatient[]
+  medicalRecords   MedicalRecord[]  @relation("PatientRecords")
+  doctorHospitals  HospitalDoctor[]
+  consents         ConsentRule[]
+  patientAppointments Appointment[] @relation("PatientAppointments")
+  doctorAppointments  Appointment[] @relation("DoctorAppointments")
+  issues           Issue[]
+  
+  createdAt DateTime @default(now())
+}
+
+model Hospital {
+  id        String   @id @default(uuid())
+  name      String
+  location  String
+  
+  patients  HospitalPatient[]
+  doctors   HospitalDoctor[]
+  appointments Appointment[]
+  issues       Issue[]
+  
+  createdAt DateTime @default(now())
+}
+
+model HospitalPatient {
+  id         String   @id @default(uuid())
+  userId     String
+  hospitalId String
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, hospitalId])
+}
+
+model HospitalDoctor {
+  id         String   @id @default(uuid())
+  userId     String
+  hospitalId String
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, hospitalId])
+}
+
+model Appointment {
+  id          String   @id @default(uuid())
+  patientId   String
+  doctorId    String
+  hospitalId  String
+  patient     User     @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctor      User     @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  hospital    Hospital @relation(fields: [hospitalId], references: [id])
+  
+  status      String   // "PENDING", "ACCEPTED", "COMPLETED"
+  appointmentDate String?
+  timeSlot    String?
+  createdAt   DateTime @default(now())
+  
+  records     MedicalRecord[]
+}
+
+model MedicalRecord {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     User     @relation("PatientRecords", fields: [patientId], references: [id])
+  
+  hospitalId  String
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  
+  title       String
+  type        String   // "NOTE", "LAB", "MEDICATION", "ALLERGY", "VACCINE"
+  specialty   String   
+  content     String   
+  date        DateTime @default(now())
+}
+
+model ConsentRule {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     User     @relation(fields: [patientId], references: [id])
+  
+  hospitalId  String?  
+  doctorId    String?  
+  specialty   String?  
+  
+  isAllowed   Boolean  @default(true) 
+  
+  createdAt   DateTime @default(now())
+}
+
+model Issue {
+  id          String   @id @default(uuid())
+  patientId   String
+  hospitalId  String
+  patient     User     @relation(fields: [patientId], references: [id])
+  hospital    Hospital @relation(fields: [hospitalId], references: [id])
+  
+  title       String
+  description String
+  status      String   // "OPEN", "RESOLVED"
+  
+  createdAt   DateTime @default(now())
+}
