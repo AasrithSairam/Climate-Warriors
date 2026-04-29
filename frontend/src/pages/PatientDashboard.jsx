@@ -608,31 +608,6 @@ export default function PatientDashboard({ user }) {
               )}
             </div>
           } />
-
-                    {/* Consent Form */}
-                    <div>
-                      <h3 className="mb-4">Data Privacy Consent</h3>
-                      <p className="text-sm text-secondary mb-4">You have full control over which doctors can see your longitudinal memory layer.</p>
-                      <div className="flex-col gap-2">
-                        {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.filter(d => d.user.role === 'DOCTOR').map(d => {
-                          // Simple mock check for consent
-                          return (
-                          <div key={d.user.id} className="flex justify-between items-center" style={{background: 'white', border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '12px'}}>
-                            <div>
-                              <p style={{margin:0, fontWeight:600}}>{d.user.name}</p>
-                              <p className="text-sm text-secondary">{d.user.specialty}</p>
-                            </div>
-                            <button className="badge btn-secondary">Toggle Access</button>
-                          </div>
-                        )})}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          } />
-
           <Route path="/directory" element={
             <div className="stagger-2">
               <h2 className="text-gradient">Hospitals Directory</h2>
