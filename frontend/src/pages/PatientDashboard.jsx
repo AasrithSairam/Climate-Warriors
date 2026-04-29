@@ -472,20 +472,41 @@ export default function PatientDashboard({ user }) {
 
           <Route path="/medications" element={
             <div className="stagger-3">
-              <h2 className="text-gradient mb-6">Medications</h2>
-              <div className="glass-card">
-                <h3 className="mb-4">Current Prescriptions</h3>
+              <h2 className="text-gradient mb-6">Unified Medication Profile</h2>
+              
+              <div className="glass-card mb-8" style={{borderTop: '4px solid var(--warning)'}}>
+                <h3 className="mb-4">Recent Prescriptions (Last 5 Years)</h3>
                 <div className="flex-col gap-3">
-                  {profile.medicalRecords.filter(r => r.type === 'MEDICATION').map(m => (
-                    <div key={m.id} className="p-4 flex justify-between items-center" style={{background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', borderLeft: '4px solid var(--warning)'}}>
+                  {profile.medicalRecords
+                    .filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() >= new Date().getFullYear() - 5)
+                    .map(m => (
+                    <div key={m.id} className="p-4 flex justify-between items-center" style={{background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px'}}>
                       <div>
-                        <h4 style={{margin:0, color: 'var(--text-primary)'}}>{m.title}</h4>
+                        <h4 style={{margin:0, color: 'var(--text-primary)'}}>{m.title.replace('Medication: ', '')}</h4>
                         <p className="text-sm mt-1 text-secondary">{m.content}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-secondary mb-2">{new Date(m.date).toLocaleDateString()}</p>
-                        <button className="badge btn-secondary" onClick={() => {setModalData(m); setActiveModal('PDF')}}>View Document</button>
+                        <span className="badge mb-2">ACTIVE/RECENT</span>
+                        <p className="text-xs text-secondary">{new Date(m.date).toLocaleDateString()}</p>
                       </div>
+                    </div>
+                  ))}
+                  {profile.medicalRecords.filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() >= new Date().getFullYear() - 5).length === 0 && (
+                    <p className="text-sm text-secondary">No recent prescriptions recorded.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="glass-card">
+                <h3 className="mb-4">Historical Medication History</h3>
+                <div className="flex-col gap-2">
+                  {profile.medicalRecords
+                    .filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() < new Date().getFullYear() - 5)
+                    .sort((a,b) => new Date(b.date) - new Date(a.date))
+                    .map(m => (
+                    <div key={m.id} className="p-3 flex justify-between items-center" style={{borderBottom: '1px solid #f1f5f9'}}>
+                      <p style={{margin:0, fontWeight: 500}}>{m.title.replace('Medication: ', '')}</p>
+                      <p className="text-xs text-secondary">{new Date(m.date).getFullYear()}</p>
                     </div>
                   ))}
                 </div>
