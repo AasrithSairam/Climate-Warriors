@@ -1,8 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const multer = require('multer');
+const path = require('path');
+const axios = require('axios');
+const fs = require('fs');
+
 const prisma = new PrismaClient();
 const app = express();
+
+const upload = multer({ dest: 'uploads/' });
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(cors());
 app.use(express.json());
@@ -166,6 +174,47 @@ app.get('/api/patients/:id/records', async (req, res) => {
   });
 
   res.json({ patientId, doctorSpecialty: doctor.specialty, records: allowedRecords });
+});
+
+// Smart Upload & Vision Processing
+app.post('/api/upload-record', upload.single('file'), async (req, res) => {
+  const { patientId, hospitalId, specialty } = req.body;
+  const file = req.file;
+
+  if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+  try {
+    // 1. Send to AI Vision Agent for processing
+    // Note: We send the absolute path to the AI service
+    const filePath = path.resolve(file.path);
+    const aiResponse = await axios.post('http://localhost:8005/vision/process', {
+      file_path: filePath,
+      patient_id: patientId
+    });
+
+    const parsedData = aiResponse.data.records; // Array of structured records
+
+    // 2. Save all parsed records to database
+    const savedRecords = await Promise.all(parsedData.map(record => 
+      prisma.medicalRecord.create({
+        data: {
+          patientId: patientId,
+          hospitalId: hospitalId || "mock-h-1",
+          title: record.title,
+          type: record.type || 'MEDICATION',
+          specialty: specialty || 'General Physician',
+          content: record.content,
+          date: record.date || new Date().toISOString().split('T')[0],
+          documentUrl: `/uploads/${file.filename}`
+        }
+      })
+    ));
+
+    res.json({ message: 'Record processed successfully', records: savedRecords });
+  } catch (error) {
+    console.error('Upload Error:', error.message);
+    res.status(500).json({ error: 'Failed to process medical record with AI' });
+  }
 });
 
 app.listen(3001, () => console.log('Backend running on http://localhost:3001'));

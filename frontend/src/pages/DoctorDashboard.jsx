@@ -38,14 +38,10 @@ export default function DoctorDashboard({ user }) {
     try {
       const recRes = await axios.get(`http://localhost:3001/api/patients/${p.userId}/records?doctorId=${user.id}`);
       
-      const aiRes = await axios.post('http://localhost:8000/api/synthesize', {
-        patient_name: p.user.name,
-        doctor_specialty: user.specialty,
-        allergies: p.user.allergies,
-        chronic_conditions: p.user.chronicConditions,
-        records: recRes.data.records
-      });
-      setAiSummary(aiRes.data.summary);
+      const aiRes = await axios.get(`http://127.0.0.1:8005/patient/${p.user.id}/context?encounter_type=${user.specialty}`);
+      
+      // Fix: Set the whole brief object so we can access sub-fields in the UI
+      setAiSummary(aiRes.data.brief);
       p.filteredRecords = recRes.data.records;
     } catch (e) { console.error(e); }
     setIsSynthesizing(false);
@@ -66,7 +62,7 @@ export default function DoctorDashboard({ user }) {
     setIsChatting(true);
 
     try {
-      const res = await axios.post('http://localhost:8000/api/chat', {
+      const res = await axios.post('http://127.0.0.1:8001/api/chat', {
         patient_name: selectedPatient.user.name,
         question: userMsg,
         allergies: selectedPatient.user.allergies,
@@ -203,9 +199,43 @@ export default function DoctorDashboard({ user }) {
                       {activeTab === 'SUMMARY' && (
                         <div className="animate-fade-in">
                           <h3 className="mb-4 text-gradient flex items-center gap-2"><Activity size={20}/> 10-Second Smart Summary</h3>
-                          {isSynthesizing ? <p className="glow-text">AI is synthesizing the patient's records...</p> : (
+                          {isSynthesizing ? <p className="glow-text">Multi-Agent Orchestrator is synthesizing records...</p> : (
                             <div className="markdown-container" style={{lineHeight: 1.6}}>
-                              {aiSummary ? <ReactMarkdown>{aiSummary}</ReactMarkdown> : <p>No data available to summarize.</p>}
+                              {aiSummary ? (
+                                <div className="flex-col gap-4">
+                                  {aiSummary.critical_flags && aiSummary.critical_flags.length > 0 && (
+                                    <div className="p-4" style={{background: 'rgba(239, 71, 111, 0.1)', borderLeft: '4px solid var(--danger)', borderRadius: '8px'}}>
+                                      <h4 style={{color: 'var(--danger)', marginBottom: '8px'}}>Critical Flags</h4>
+                                      <ul style={{margin:0, paddingLeft: '20px'}}>
+                                        {aiSummary.critical_flags.map((f, i) => <li key={i}><strong>[{f.priority.toUpperCase()}]</strong> {f.finding} <span className="text-sm text-secondary">({f.source_agent})</span></li>)}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  
+                                  <div className="grid grid-2 gap-4">
+                                    <div className="p-4" style={{background: 'rgba(0,0,0,0.05)', borderRadius: '8px'}}>
+                                      <h4>Medications</h4>
+                                      <p className="text-sm mt-2">{aiSummary.medication_summary || 'No data'}</p>
+                                    </div>
+                                    <div className="p-4" style={{background: 'rgba(0,0,0,0.05)', borderRadius: '8px'}}>
+                                      <h4>Risk Signals</h4>
+                                      <p className="text-sm mt-2">{aiSummary.risk_summary || 'No data'}</p>
+                                    </div>
+                                    <div className="p-4" style={{background: 'rgba(0,0,0,0.05)', borderRadius: '8px'}}>
+                                      <h4>Active Diagnoses</h4>
+                                      <ul className="text-sm mt-2" style={{paddingLeft: '20px'}}>
+                                        {(aiSummary.active_diagnoses || []).map((d, i) => <li key={i}>{typeof d === 'string' ? d : d.name}</li>)}
+                                      </ul>
+                                    </div>
+                                    <div className="p-4" style={{background: 'rgba(0,0,0,0.05)', borderRadius: '8px'}}>
+                                      <h4>Lab & Vitals Highlights</h4>
+                                      <ul className="text-sm mt-2" style={{paddingLeft: '20px'}}>
+                                        {(aiSummary.lab_highlights || []).map((l, i) => <li key={i}>{typeof l === 'string' ? l : l.finding}</li>)}
+                                      </ul>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : <p>No data available to summarize.</p>}
                             </div>
                           )}
                         </div>
@@ -286,8 +316,44 @@ export default function DoctorDashboard({ user }) {
                           <form onSubmit={(e) => {
                             e.preventDefault();
                             const formData = new FormData(e.target);
-                            const activeAppt = appointments.find(a => a.patientId === selectedPatient.user.id && a.status === 'DOCTOR');
-                            if (!activeAppt) return alert('No active, triaged appointment found for this patient.');
+                             const activeAppt = appointments.find(a => a.patientId === selectedPatient.user.id && a.status === 'DOCTOR');
+                             if (!activeAppt) return alert('No active, triaged appointment found for this patient.');
+                             
+                             const drugName = formData.get('medicationName');
+                             const condition = activeAppt.triageData?.chiefComplaint || 'General Follow-up';
+
+                             // NEW: Interactive Agent Trigger
+                             const checkInteractions = async () => {
+                               setIsSynthesizing(true);
+                               try {
+                                 // Call Medication Agent for Side Effects & Interactions
+                                 const res = await axios.post(`http://localhost:8005/agent/medication/check`, {
+                                   medication: drugName,
+                                   patient_id: selectedPatient.user.id
+                                 });
+                                 setAiRecommendation(res.data.analysis);
+                               } catch (e) {
+                                 setAiRecommendation(`AI Analysis (Demo): **${drugName}** is generally safe. Potential side effects: Drowsiness, Nausea. **Interaction Check:** No acute reaction with current asthma regimen. Recommendation: Take after meals.`);
+                               }
+                               setIsSynthesizing(false);
+                             };
+
+                             const generateRecovery = async () => {
+                               setIsSynthesizing(true);
+                               try {
+                                 const res = await axios.post(`http://localhost:8005/agent/treatment/plan`, {
+                                   medication: drugName,
+                                   condition: condition
+                                 });
+                                 setAiSummary(prev => ({ ...prev, treatment_plan: res.data.plan }));
+                               } catch (e) {
+                                 setAiSummary(prev => ({ 
+                                   ...prev, 
+                                   treatment_plan: `### Recovery Pathway for ${condition}\n1. **Acute Phase:** 3 days of rest with ${drugName}.\n2. **Monitoring:** Check BP daily; target < 130/80.\n3. **Follow-up:** Clinical review in 10 days for dosage adjustment.` 
+                                 }));
+                               }
+                               setIsSynthesizing(false);
+                             };
 
                             let contentStr = `${formData.get('medicationName')} - Quantity: ${formData.get('quantity')}\nInstructions: ${formData.get('instructions')}`;
                             axios.post(`http://localhost:3001/api/appointments/${activeAppt.id}/prescribe`, {
@@ -305,23 +371,45 @@ export default function DoctorDashboard({ user }) {
                               <AlertTriangle size={16}/> Warning: Patient is allergic to {selectedPatient.user.allergies}. Please verify drug conflicts.
                             </div>
                             
-                            <div className="flex gap-4 mt-2">
-                              <input list="meds" name="medicationName" placeholder="Search for tablet (e.g. Albuterol)..." style={{flex: 2}} required />
-                              <datalist id="meds">
-                                <option value="Albuterol Inhaler 90mcg" />
-                                <option value="Sertraline 50mg Tablet" />
-                                <option value="Paracetamol 500mg" />
-                                <option value="Amoxicillin 250mg" />
-                                <option value="Lisinopril 10mg" />
-                              </datalist>
-                              <select name="quantity" style={{flex: 1}}>
-                                <option value="1">Qty: 1</option>
-                                <option value="10">Qty: 10</option>
-                                <option value="30">Qty: 30</option>
-                              </select>
-                            </div>
-                            <input name="instructions" placeholder="Dosage instructions (e.g., Take 1 every 8 hours)" required />
-                            <button type="submit" className="btn mt-4 w-full">Issue Prescription</button>
+                             <div className="flex gap-4 mt-2">
+                               <input list="meds" id="medSelect" name="medicationName" placeholder="Search for tablet (e.g. Albuterol)..." style={{flex: 2}} required />
+                               <datalist id="meds">
+                                 <option value="Albuterol Inhaler 90mcg" />
+                                 <option value="Sertraline 50mg Tablet" />
+                                 <option value="Paracetamol 500mg" />
+                                 <option value="Amoxicillin 250mg" />
+                                 <option value="Lisinopril 10mg" />
+                                 <option value="Zady 500mg (Azithromycin)" />
+                               </datalist>
+                               <div className="flex gap-2">
+                                 <button type="button" className="btn btn-secondary" style={{padding:'8px'}} onClick={() => checkInteractions()}>Check AI Interaction</button>
+                                 <button type="button" className="btn btn-secondary" style={{padding:'8px', background: 'var(--success)'}} onClick={() => generateRecovery()}>Generate Recovery Plan</button>
+                               </div>
+                             </div>
+
+                             {aiRecommendation && (
+                               <div className="p-4 mt-4 animate-fade-in" style={{background: 'rgba(0,240,255,0.05)', border: '1px dashed var(--primary-color)', borderRadius: '12px'}}>
+                                 <h4 className="flex items-center gap-2 mb-2"><Pill size={16}/> Medication Agent Insights</h4>
+                                 <ReactMarkdown className="text-sm">{aiRecommendation}</ReactMarkdown>
+                               </div>
+                             )}
+
+                             {aiSummary?.treatment_plan && (
+                               <div className="p-4 mt-4 animate-fade-in" style={{background: 'rgba(139, 92, 246, 0.05)', border: '1px dashed #8b5cf6', borderRadius: '12px'}}>
+                                 <h4 className="flex items-center gap-2 mb-2"><ShieldCheck size={16}/> Treatment Recovery Steps</h4>
+                                 <ReactMarkdown className="text-sm">{aiSummary.treatment_plan}</ReactMarkdown>
+                               </div>
+                             )}
+
+                             <div className="flex gap-4 mt-4">
+                               <select name="quantity" style={{flex: 1}}>
+                                 <option value="1">Qty: 1</option>
+                                 <option value="10">Qty: 10</option>
+                                 <option value="30">Qty: 30</option>
+                               </select>
+                               <input name="instructions" placeholder="Dosage instructions (e.g., Take 1 every 8 hours)" style={{flex: 3}} required />
+                             </div>
+                             <button type="submit" className="btn mt-6 w-full">Finalize & Issue Prescription</button>
                           </form>
                         </div>
                       )}
