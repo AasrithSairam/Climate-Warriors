@@ -7,6 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Auth
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   const user = await prisma.user.findUnique({ where: { email } });
@@ -17,20 +18,40 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Patients
 app.get('/api/patients/:id', async (req, res) => {
   const patient = await prisma.user.findUnique({
     where: { id: req.params.id },
     include: {
       patientHospitals: { include: { hospital: { include: { doctors: { include: { user: true } } } } } },
       consents: true,
-      patientAppointments: { include: { doctor: true, hospital: true, records: true } },
-      issues: { include: { hospital: true } },
+      patientAppointments: { include: { doctor: true, hospital: true, records: true, triageData: true } },
       medicalRecords: { include: { appointment: { include: { doctor: true } } } }
     }
   });
   res.json(patient);
 });
 
+// Update Profile
+app.put('/api/patients/:id', async (req, res) => {
+  const { phone, address, language, allergies, chronicConditions } = req.body;
+  const updated = await prisma.user.update({
+    where: { id: req.params.id },
+    data: { phone, address, language, allergies, chronicConditions }
+  });
+  res.json(updated);
+});
+
+// Mock Document Upload
+app.post('/api/patients/:id/upload', async (req, res) => {
+  const { hospitalId, title, type, specialty, content } = req.body;
+  const record = await prisma.medicalRecord.create({
+    data: { patientId: req.params.id, hospitalId, title, type, specialty, content, documentUrl: 'mock_pdf_uploaded' }
+  });
+  res.json(record);
+});
+
+// Hospitals
 app.get('/api/hospitals', async (req, res) => {
   const hospitals = await prisma.hospital.findMany({ include: { doctors: { include: { user: true } } } });
   res.json(hospitals);
@@ -39,33 +60,18 @@ app.get('/api/hospitals', async (req, res) => {
 app.post('/api/patients/:id/join', async (req, res) => {
   const { hospitalId } = req.body;
   try {
-    const joined = await prisma.hospitalPatient.create({
-      data: { userId: req.params.id, hospitalId }
-    });
+    const joined = await prisma.hospitalPatient.create({ data: { userId: req.params.id, hospitalId } });
     res.json(joined);
-  } catch (err) {
-    res.status(400).json({ error: 'Already joined or invalid' });
-  }
+  } catch (err) { res.status(400).json({ error: 'Already joined or invalid' }); }
 });
 
 app.post('/api/patients/:id/consent', async (req, res) => {
   const { hospitalId, specialty, doctorId, isAllowed } = req.body;
-  const consent = await prisma.consentRule.create({
-    data: { patientId: req.params.id, hospitalId, specialty, doctorId, isAllowed }
-  });
+  const consent = await prisma.consentRule.create({ data: { patientId: req.params.id, hospitalId, specialty, doctorId, isAllowed } });
   res.json(consent);
 });
 
-// Create Issue
-app.post('/api/issues', async (req, res) => {
-  const { patientId, hospitalId, title, description } = req.body;
-  const issue = await prisma.issue.create({
-    data: { patientId, hospitalId, title, description, status: 'OPEN' }
-  });
-  res.json(issue);
-});
-
-// Create Appointment
+// Appointments
 app.post('/api/appointments', async (req, res) => {
   const { patientId, doctorId, hospitalId, appointmentDate, timeSlot } = req.body;
   const appt = await prisma.appointment.create({
@@ -74,36 +80,39 @@ app.post('/api/appointments', async (req, res) => {
   res.json(appt);
 });
 
-// Doctor accepts appointment
-app.put('/api/appointments/:id/accept', async (req, res) => {
-  const appt = await prisma.appointment.update({
-    where: { id: req.params.id },
-    data: { status: 'ACCEPTED' }
+// Nurse Workflow
+app.get('/api/nurses/:id/appointments', async (req, res) => {
+  const nurseHospitals = await prisma.hospitalDoctor.findMany({ where: { userId: req.params.id } });
+  const hospitalIds = nurseHospitals.map(nh => nh.hospitalId);
+
+  const appointments = await prisma.appointment.findMany({
+    where: { hospitalId: { in: hospitalIds }, status: 'PENDING' },
+    include: { patient: true, doctor: true, hospital: true }
   });
-  res.json(appt);
+  res.json(appointments);
 });
 
-// Complete appointment
-app.put('/api/appointments/:id/complete', async (req, res) => {
-  const appt = await prisma.appointment.update({
-    where: { id: req.params.id },
-    data: { status: 'COMPLETED' }
-  });
-  res.json(appt);
-});
-
-// Doctor prescribes during appointment
-app.post('/api/appointments/:id/prescribe', async (req, res) => {
-  const { patientId, hospitalId, title, type, specialty, content } = req.body;
-  const record = await prisma.medicalRecord.create({
-    data: {
-      patientId, hospitalId, appointmentId: req.params.id, title, type, specialty, content
+// Nurse Triage Submit
+app.post('/api/appointments/:id/triage', async (req, res) => {
+  const { bp, sugar, weight, spo2, heartRate, breathTraining, chiefComplaint } = req.body;
+  const triage = await prisma.triageData.create({
+    data: { 
+      appointmentId: req.params.id, 
+      bp, sugar: parseInt(sugar), weight: parseFloat(weight), 
+      spo2: parseInt(spo2), heartRate: parseInt(heartRate), 
+      breathTraining, chiefComplaint 
     }
   });
-  res.json(record);
+  
+  const appt = await prisma.appointment.update({
+    where: { id: req.params.id },
+    data: { status: 'DOCTOR', issueString: chiefComplaint }
+  });
+  
+  res.json({ triage, appt });
 });
 
-// Get patients for Doctor
+// Doctor Dashboard
 app.get('/api/doctors/:id/patients', async (req, res) => {
   const doctorHospitals = await prisma.hospitalDoctor.findMany({ where: { userId: req.params.id } });
   const hospitalIds = doctorHospitals.map(dh => dh.hospitalId);
@@ -113,42 +122,43 @@ app.get('/api/doctors/:id/patients', async (req, res) => {
     include: { user: true, hospital: true }
   });
   
-  // Also get pending/accepted appointments for this doctor
   const appointments = await prisma.appointment.findMany({
     where: { doctorId: req.params.id },
-    include: { patient: true, hospital: true }
+    include: { patient: true, hospital: true, triageData: true }
   });
 
   res.json({ patients, appointments });
 });
 
-// Get Filtered Records
+// Doctor completes appointment / prescribes
+app.post('/api/appointments/:id/prescribe', async (req, res) => {
+  const { patientId, hospitalId, title, type, specialty, content } = req.body;
+  const record = await prisma.medicalRecord.create({
+    data: { patientId, hospitalId, appointmentId: req.params.id, title, type, specialty, content, documentUrl: 'mock_pdf' }
+  });
+  await prisma.appointment.update({ where: { id: req.params.id }, data: { status: 'COMPLETED' } });
+  res.json(record);
+});
+
+// Filtered Records logic...
 app.get('/api/patients/:id/records', async (req, res) => {
   const { doctorId } = req.query;
   const patientId = req.params.id;
 
   const doctor = await prisma.user.findUnique({
-    where: { id: doctorId },
-    include: { doctorHospitals: true }
+    where: { id: doctorId }, include: { doctorHospitals: true }
   });
-
-  if (!doctor || doctor.role !== 'DOCTOR') return res.status(403).json({ error: 'Unauthorized' });
 
   const allRecords = await prisma.medicalRecord.findMany({ where: { patientId } });
   const consents = await prisma.consentRule.findMany({ where: { patientId } });
-
   const doctorHospitalIds = doctor.doctorHospitals.map(dh => dh.hospitalId);
   
   const allowedRecords = allRecords.filter(record => {
     let allowed = true;
     for (const rule of consents) {
-      if (rule.doctorId && rule.doctorId === doctorId) {
-        allowed = rule.isAllowed;
-        continue; // Doctor-specific rule overrides specialty rules
-      }
+      if (rule.doctorId && rule.doctorId === doctorId) { allowed = rule.isAllowed; continue; }
       if (rule.hospitalId && !doctorHospitalIds.includes(rule.hospitalId)) continue;
       if (rule.specialty && rule.specialty !== doctor.specialty && !rule.doctorId) continue;
-      
       if (!rule.isAllowed) allowed = false;
       if (rule.isAllowed) allowed = true;
     }

@@ -9,15 +9,20 @@ generator client {
 
 model User {
   id              String   @id @default(uuid())
-  role            String   // "PATIENT" or "DOCTOR"
+  role            String   // "PATIENT", "DOCTOR", "NURSE"
   name            String
   email           String   @unique
   password        String
   specialty       String?  
   dob             DateTime? 
-  profileImageUrl String?  // New field
+  profileImageUrl String?  
   allergies       String?  @default("None")
   chronicConditions String? @default("None")
+  
+  // Profile Editable fields
+  phone           String?
+  address         String?
+  language        String   @default("EN") // EN, TA, HI
   
   patientHospitals HospitalPatient[]
   medicalRecords   MedicalRecord[]  @relation("PatientRecords")
@@ -34,10 +39,22 @@ model Hospital {
   id           String   @id @default(uuid())
   name         String
   location     String
-  imageUrl     String?  // New field
-  rating       Float?   // New field
-  reviewsCount Int?     // New field
-  specialties  String?  // New field, comma separated
+  imageUrl     String?  
+  rating       Float?   
+  reviewsCount Int?     
+  specialties  String?  
+  
+  // New Transparency Metrics
+  sector         String?  // Private, Govt, Trust
+  facilityLevel  String?  // Multispeciality, General
+  consultationFee Int?    // Base fee
+  procedureCosts String?  // Stringified JSON e.g. "{ 'Surgery': '95000-280000' }"
+  insuranceNetwork String? // "Cashless, In-Network"
+  readmissionRate Float?  // Percentage
+  accreditations String?  // "NABH, JCI"
+  erWaitTime     Int?     // Minutes
+  icuBeds        Int?     // Available count
+  isDigitallyIntegrated Boolean @default(true)
   
   patients  HospitalPatient[]
   doctors   HospitalDoctor[]
@@ -78,12 +95,31 @@ model Appointment {
   doctor      User     @relation("DoctorAppointments", fields: [doctorId], references: [id])
   hospital    Hospital @relation(fields: [hospitalId], references: [id])
   
-  status      String   
+  status      String   // PENDING -> TRIAGE -> DOCTOR -> COMPLETED
   appointmentDate String?
   timeSlot    String?
+  issueString String?  // Written by nurse or patient
+  
   createdAt   DateTime @default(now())
   
   records     MedicalRecord[]
+  triageData  TriageData?
+}
+
+model TriageData {
+  id            String   @id @default(uuid())
+  appointmentId String   @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  
+  heartRate     Int?
+  spo2          Int?
+  bp            String?
+  sugar         Int?
+  weight        Float?
+  breathTraining String?
+  chiefComplaint String?
+  
+  createdAt     DateTime @default(now())
 }
 
 model MedicalRecord {
@@ -100,7 +136,7 @@ model MedicalRecord {
   specialty   String   
   content     String   
   date        DateTime @default(now())
-  documentUrl String?  // New field to trigger Mock PDF viewer
+  documentUrl String?  
 }
 
 model ConsentRule {

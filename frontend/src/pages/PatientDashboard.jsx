@@ -3,7 +3,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Activity, Calendar, FileText, Folder, HeartPulse, Hospital, 
-  MapPin, Pill, ShieldAlert, ShieldCheck, Star, UploadCloud, Bell
+  MapPin, Pill, ShieldCheck, Star, UploadCloud, Bell, Info, Edit, CheckCircle
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -13,11 +13,19 @@ export default function PatientDashboard({ user }) {
   const [aiInsights, setAiInsights] = useState(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   
-  const [otpModal, setOtpModal] = useState(null);
-  const [otp, setOtp] = useState('');
+  // Modals
+  const [activeModal, setActiveModal] = useState(null); // 'OTP', 'UPLOAD', 'PROFILE', 'HOSPITAL_INFO', 'PDF'
+  const [modalData, setModalData] = useState(null);
   
+  // Forms
+  const [otp, setOtp] = useState('');
+  const [uploadForm, setUploadForm] = useState({ title: '', type: 'NOTE', specialty: 'General', content: '' });
+  const [profileForm, setProfileForm] = useState({});
+  const [bookingIssue, setBookingIssue] = useState('');
+  const [aiRecommendation, setAiRecommendation] = useState(null);
+  const [isRecommending, setIsRecommending] = useState(false);
+
   const [activeFolder, setActiveFolder] = useState(null); 
-  const [selectedPdf, setSelectedPdf] = useState(null);
   const [hospitalFilter, setHospitalFilter] = useState(null);
 
   const loc = useLocation();
@@ -25,10 +33,12 @@ export default function PatientDashboard({ user }) {
   const fetchData = async () => {
     const pRes = await axios.get(`http://localhost:3001/api/patients/${user.id}`);
     setProfile(pRes.data);
+    setProfileForm({ phone: pRes.data.phone || '', address: pRes.data.address || '', allergies: pRes.data.allergies, chronicConditions: pRes.data.chronicConditions });
+    
     const hRes = await axios.get('http://localhost:3001/api/hospitals');
     setAllHospitals(hRes.data);
     
-    if (pRes.data && pRes.data.medicalRecords.length > 0) {
+    if (pRes.data && pRes.data.medicalRecords.length > 0 && !aiInsights) {
       generateInsights(pRes.data);
     }
   };
@@ -37,10 +47,8 @@ export default function PatientDashboard({ user }) {
     setIsSynthesizing(true);
     try {
       const res = await axios.post('http://localhost:8000/api/synthesize', {
-        patient_name: patientData.name,
-        doctor_specialty: "Patient Self-Review",
-        allergies: patientData.allergies,
-        chronic_conditions: patientData.chronicConditions,
+        patient_name: patientData.name, doctor_specialty: "Patient Self-Review",
+        allergies: patientData.allergies, chronic_conditions: patientData.chronicConditions,
         records: patientData.medicalRecords
       });
       setAiInsights(res.data.summary);
@@ -53,36 +61,52 @@ export default function PatientDashboard({ user }) {
   const handleJoinSubmit = async (e) => {
     e.preventDefault();
     if (otp !== '1234') return alert('Invalid OTP.');
-    try {
-      await axios.post(`http://localhost:3001/api/patients/${user.id}/join`, { hospitalId: otpModal });
-      setOtpModal(null); setOtp(''); fetchData();
-    } catch (e) { alert('Failed to join.'); }
+    await axios.post(`http://localhost:3001/api/patients/${user.id}/join`, { hospitalId: modalData.id });
+    setActiveModal(null); setOtp(''); fetchData();
   };
 
-  const handleToggleConsent = async (hospitalId, doctorId, currentVal) => {
-    await axios.post(`http://localhost:3001/api/patients/${user.id}/consent`, { hospitalId, doctorId, isAllowed: !currentVal });
-    fetchData();
+  const handleUploadSubmit = async (e) => {
+    e.preventDefault();
+    await axios.post(`http://localhost:3001/api/patients/${user.id}/upload`, {
+      hospitalId: allHospitals[0].id, // Mock assignment to first hospital
+      ...uploadForm
+    });
+    alert('Document securely uploaded to vault.');
+    setActiveModal(null); fetchData();
+  };
+
+  const handleProfileUpdate = async (e) => {
+    e.preventDefault();
+    await axios.put(`http://localhost:3001/api/patients/${user.id}`, profileForm);
+    alert('Profile updated securely.');
+    setActiveModal(null); fetchData();
+  };
+
+  const getAiRecommendation = async () => {
+    if(!bookingIssue) return;
+    setIsRecommending(true);
+    try {
+      const res = await axios.post('http://localhost:8000/api/recommend-hospital', { issue: bookingIssue, hospitals: allHospitals });
+      setAiRecommendation(res.data.recommendation);
+    } catch (e) { console.error(e); }
+    setIsRecommending(false);
   };
 
   const createAppointment = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     await axios.post('http://localhost:3001/api/appointments', {
-      patientId: user.id, hospitalId: formData.get('hospitalId'), doctorId: formData.get('doctorId'),
+      patientId: user.id, hospitalId: hospitalFilter, doctorId: formData.get('doctorId'),
       appointmentDate: formData.get('appointmentDate'), timeSlot: formData.get('timeSlot')
     });
-    alert('Appointment requested!'); fetchData(); e.target.reset();
+    alert('Appointment requested! Please wait for Nurse Triage upon arrival.'); 
+    fetchData(); e.target.reset(); setBookingIssue(''); setAiRecommendation(null);
   };
 
-  if (!profile) return <div className="flex justify-center items-center w-full"><Activity className="glow-effect" color="var(--primary-color)" size={48} /></div>;
+  if (!profile) return <div className="flex justify-center items-center h-full"><Activity className="glow-effect text-primary" size={48} /></div>;
 
   const joinedHospitalIds = profile.patientHospitals.map(ph => ph.hospitalId);
   const unjoinedHospitals = allHospitals.filter(h => !joinedHospitalIds.includes(h.id));
-
-  const isDoctorDenied = (doctorId) => {
-    const rule = profile.consents.slice().reverse().find(c => c.doctorId === doctorId);
-    return rule ? !rule.isAllowed : false;
-  };
 
   const navItem = (path, icon, label) => {
     const active = loc.pathname === path || (path === '/patient' && loc.pathname === '/patient/');
@@ -93,74 +117,39 @@ export default function PatientDashboard({ user }) {
     );
   };
 
-  // Vault Logic
-  const getFilesForFolder = (folderType, hId = null) => {
-    let recs = profile.medicalRecords;
-    if (hId) recs = recs.filter(r => r.hospitalId === hId);
-    if (folderType === 'PRESCRIPTIONS') return recs.filter(r => r.type === 'MEDICATION');
-    if (folderType === 'REPORTS') return recs.filter(r => r.type === 'NOTE' || r.type === 'LAB' || r.type === 'VACCINE');
-    if (folderType === 'SCANS') return recs.filter(r => r.type === 'SCAN');
-    return [];
-  };
-
-  const renderFolderView = (hId = null) => (
-    <div>
-      <div className="flex items-center gap-4 mb-6">
-        {activeFolder && <button className="btn-secondary badge" onClick={() => setActiveFolder(null)}>← Back to Folders</button>}
-        {hId && <button className="btn-secondary badge" onClick={() => {setActiveFolder(null); setHospitalFilter(null)}}>← Back to Hospitals</button>}
-        <h3 style={{margin:0}}>{activeFolder ? activeFolder : 'My Document Vault'}</h3>
-      </div>
-
-      {!activeFolder ? (
-        <div className="grid grid-2" style={{gridTemplateColumns: 'repeat(3, 1fr)'}}>
-          <div className="folder-card" onClick={() => setActiveFolder('PRESCRIPTIONS')}>
-            <Folder size={48} color="var(--warning)" style={{margin: '0 auto 12px'}} />
-            <h4>Prescriptions</h4>
-            <p className="text-sm">{getFilesForFolder('PRESCRIPTIONS', hId).length} files</p>
-          </div>
-          <div className="folder-card" onClick={() => setActiveFolder('REPORTS')}>
-            <Folder size={48} color="var(--primary-color)" style={{margin: '0 auto 12px'}} />
-            <h4>Reports & Labs</h4>
-            <p className="text-sm">{getFilesForFolder('REPORTS', hId).length} files</p>
-          </div>
-          <div className="folder-card" onClick={() => setActiveFolder('SCANS')}>
-            <Folder size={48} color="var(--secondary-color)" style={{margin: '0 auto 12px'}} />
-            <h4>Scans</h4>
-            <p className="text-sm">{getFilesForFolder('SCANS', hId).length} files</p>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-col gap-2">
-          {getFilesForFolder(activeFolder, hId).map(file => (
-            <div key={file.id} className="file-item" onClick={() => setSelectedPdf(file)}>
-              <div className="flex items-center gap-4">
-                <FileText color={activeFolder === 'PRESCRIPTIONS' ? 'var(--warning)' : 'var(--primary-color)'} />
-                <div>
-                  <p style={{fontWeight: 600, margin:0}}>{file.title}.pdf</p>
-                  <p className="text-sm mt-1">{new Date(file.date).toLocaleDateString()} • {file.specialty}</p>
-                </div>
-              </div>
-              <button className="badge btn-secondary">View PDF</button>
+  // Progress Tracker Component
+  const renderProgress = (status) => {
+    const steps = ['PENDING', 'TRIAGE', 'DOCTOR', 'COMPLETED'];
+    const currIdx = steps.indexOf(status);
+    return (
+      <div className="progress-container mt-4">
+        {steps.map((s, i) => (
+          <div key={s} className="progress-step">
+            <div className={`step-circle ${i < currIdx ? 'completed' : (i === currIdx ? 'active' : '')}`}>
+              {i < currIdx ? <CheckCircle size={16}/> : i+1}
             </div>
-          ))}
-          {getFilesForFolder(activeFolder, hId).length === 0 && <p className="text-sm text-center py-8">Folder is empty.</p>}
-        </div>
-      )}
-    </div>
-  );
+            <p className="text-sm font-bold m-0" style={{color: i <= currIdx ? 'var(--primary-color)' : 'var(--text-secondary)'}}>{s}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="dashboard-layout animate-fade-in">
       <div className="sidebar">
-        <div className="mb-8 flex items-center gap-4 px-2">
+        <div className="mb-6 flex items-center gap-4 px-2">
           {profile.profileImageUrl ? <img src={profile.profileImageUrl} className="avatar" alt="Avatar"/> : <div className="avatar bg-gray-500"></div>}
           <div>
-            <h4 style={{margin:0}}>{profile.name}</h4>
-            <p className="text-sm" style={{color:'var(--primary-color)'}}>ID: {profile.id.split('-')[0]}</p>
+            <h4 style={{margin:0, color: 'var(--primary-color)'}}>{profile.name}</h4>
+            <p className="text-sm text-secondary">ID: {profile.id.split('-')[0]}</p>
           </div>
         </div>
+        <button className="btn btn-secondary w-full mb-6 flex justify-center items-center gap-2" onClick={() => setActiveModal('PROFILE')}>
+          <Edit size={16}/> Edit Profile
+        </button>
         {navItem('/patient', <Activity size={20} />, 'Dashboard')}
-        {navItem('/patient/timeline', <HeartPulse size={20} />, 'My Health Timeline')}
+        {navItem('/patient/timeline', <HeartPulse size={20} />, 'Health Timeline')}
         {navItem('/patient/documents', <Folder size={20} />, 'Medical Records')}
         {navItem('/patient/medications', <Pill size={20} />, 'Medications')}
         {navItem('/patient/doctors', <ShieldCheck size={20} />, 'Doctors & Visits')}
@@ -171,8 +160,8 @@ export default function PatientDashboard({ user }) {
         <Routes>
           <Route path="/" element={
             <div className="stagger-1">
-              <h2 className="text-gradient">Health Dashboard</h2>
-              <p className="mb-6">Welcome back. You own your health data.</p>
+              <h2 className="text-gradient mb-2">My Health Dashboard</h2>
+              <p className="mb-6 text-secondary">Welcome back. You own your health data.</p>
               
               <div className="grid grid-2 mb-6">
                 <div className="glass-card" style={{borderTop: '4px solid var(--primary-color)'}}>
@@ -189,9 +178,10 @@ export default function PatientDashboard({ user }) {
 
                 <div className="flex-col gap-6">
                   <div className="glass-card">
-                    <h3 className="mb-2">Profile</h3>
+                    <h3 className="mb-2">Profile Overview</h3>
                     <p className="text-sm"><strong>Allergies:</strong> {profile.allergies}</p>
                     <p className="text-sm mt-1"><strong>Chronic Conditions:</strong> {profile.chronicConditions}</p>
+                    <p className="text-sm mt-1"><strong>Contact:</strong> {profile.phone}</p>
                   </div>
                   
                   <div className="glass-card" style={{borderTop: '4px solid var(--warning)'}}>
@@ -199,23 +189,28 @@ export default function PatientDashboard({ user }) {
                       <h3 style={{margin:0}}>Alerts & Notifications</h3>
                       <Bell color="var(--warning)" size={18} />
                     </div>
-                    <ul className="text-sm" style={{paddingLeft: '1.2rem'}}>
-                      <li>New lab report uploaded by Dr. Alan Grant.</li>
+                    <ul className="text-sm" style={{paddingLeft: '1.2rem', margin:0}}>
+                      <li className="mb-2">New lab report uploaded by Dr. Alan Grant.</li>
                       <li>Reminder: Upcoming Cardiology checkup in 2 weeks.</li>
                     </ul>
                   </div>
                 </div>
               </div>
 
-              <h3 className="mb-4">Recent & Upcoming Visits</h3>
-              <div className="grid grid-3">
-                {profile.patientAppointments.slice(0,3).map(a => (
-                  <div key={a.id} className="glass-card">
-                    <div className="flex justify-between items-center mb-2">
-                      <strong>{a.doctor.name}</strong>
-                      <span className="badge" style={{background: a.status==='PENDING'?'rgba(255,209,102,0.2)':'rgba(6,214,160,0.2)', color: a.status==='PENDING'?'var(--warning)':'var(--success)'}}>{a.status}</span>
+              <h3 className="mb-4">Active & Upcoming Visits</h3>
+              <div className="flex-col gap-4">
+                {profile.patientAppointments.map(a => (
+                  <div key={a.id} className="glass-card" style={{padding: '20px'}}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <strong style={{fontSize: '1.1rem'}}>{a.doctor.name} ({a.doctor.specialty})</strong>
+                        <p className="text-sm text-secondary mt-1"><Calendar size={14} className="inline mr-1"/> {a.appointmentDate} @ {a.timeSlot} | {a.hospital.name}</p>
+                      </div>
+                      <span className="badge" style={{fontSize: '0.85rem'}}>{a.status}</span>
                     </div>
-                    <p className="text-sm text-secondary"><Calendar size={12} className="inline mr-1"/> {a.appointmentDate}</p>
+                    {renderProgress(a.status)}
+                    {a.status === 'TRIAGE' && <p className="text-sm text-center mt-4 glow-text">Nurse has recorded your vitals. Awaiting Doctor.</p>}
+                    {a.status === 'DOCTOR' && <p className="text-sm text-center mt-4" style={{color: 'var(--success)', fontWeight:'bold'}}>Doctor is currently reviewing your file.</p>}
                   </div>
                 ))}
               </div>
@@ -233,23 +228,19 @@ export default function PatientDashboard({ user }) {
                       <div key={r.id} className="timeline-item">
                         <div className="timeline-node" style={{
                           background: r.type === 'VACCINE' ? 'var(--success)' : (r.type === 'MEDICATION' ? 'var(--warning)' : 'var(--primary-color)'),
-                          boxShadow: `0 0 10px ${r.type === 'VACCINE' ? 'var(--success)' : (r.type === 'MEDICATION' ? 'var(--warning)' : 'var(--primary-color)')}`
+                          borderColor: 'white'
                         }}></div>
                         <div className="flex items-center gap-4 mb-3">
                           <span style={{fontSize: '1.1rem', fontWeight: 700}}>{new Date(r.date).getFullYear()}</span>
-                          <span className="text-sm" style={{color: 'var(--text-secondary)'}}>{new Date(r.date).toLocaleDateString('en-US', {month: 'long', day: 'numeric'})}</span>
                           <span className="badge">{r.specialty}</span>
                         </div>
-                        <div className="flex gap-4" style={{background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)'}}>
+                        <div className="flex gap-4" style={{background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0'}}>
                           {hosp && hosp.imageUrl && <img src={hosp.imageUrl} alt="Hosp" style={{width: '64px', height: '64px', borderRadius: '8px', objectFit: 'cover'}} />}
                           <div style={{flex: 1}}>
-                            <h4 style={{margin: '0 0 8px 0', color: 'var(--primary-color)'}}>{r.title}</h4>
-                            <p className="text-sm mb-3">{r.content}</p>
+                            <h4 style={{margin: '0 0 8px 0', color: 'var(--text-primary)'}}>{r.title}</h4>
+                            <p className="text-sm mb-3 text-secondary">{r.content}</p>
                             <div className="flex gap-2">
-                              {r.documentUrl && <button className="badge btn-secondary" onClick={() => setSelectedPdf(r)}>View Certificate / Report</button>}
-                              <p className="text-sm" style={{fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', marginLeft: 'auto'}}>
-                                {hosp ? hosp.name : 'Unknown'}
-                              </p>
+                              {r.documentUrl && <button className="badge btn-secondary" onClick={() => {setModalData(r); setActiveModal('PDF')}}>View Document</button>}
                             </div>
                           </div>
                         </div>
@@ -264,10 +255,43 @@ export default function PatientDashboard({ user }) {
           <Route path="/documents" element={
             <div className="stagger-2">
               <div className="flex justify-between items-center mb-8">
-                <h2 className="text-gradient" style={{margin:0}}>Medical Records</h2>
-                <button className="btn" onClick={() => alert('Mock: File upload dialog opened.')}><UploadCloud size={16} className="mr-2 inline" /> Upload Record</button>
+                <h2 className="text-gradient" style={{margin:0}}>Medical Records Vault</h2>
+                <button className="btn" onClick={() => setActiveModal('UPLOAD')}><UploadCloud size={16} className="mr-2 inline" /> Upload Record</button>
               </div>
-              {renderFolderView()}
+              <div className="grid grid-3">
+                <div className="folder-card" onClick={() => setActiveFolder('REPORTS')}>
+                  <Folder size={48} color="var(--primary-color)" style={{margin: '0 auto 12px'}} />
+                  <h4>Reports & Labs</h4>
+                </div>
+                <div className="folder-card" onClick={() => setActiveFolder('SCANS')}>
+                  <Folder size={48} color="var(--secondary-color)" style={{margin: '0 auto 12px'}} />
+                  <h4>Scans & Imaging</h4>
+                </div>
+                <div className="folder-card" onClick={() => setActiveFolder('ALL')}>
+                  <Folder size={48} color="var(--warning)" style={{margin: '0 auto 12px'}} />
+                  <h4>All Documents</h4>
+                </div>
+              </div>
+
+              {activeFolder && (
+                <div className="mt-8 pt-8 border-t animate-fade-in" style={{borderColor: '#e2e8f0'}}>
+                  <h3 className="mb-4">Browsing: {activeFolder}</h3>
+                  <div className="flex-col gap-2">
+                    {profile.medicalRecords.filter(r => activeFolder === 'ALL' || (activeFolder==='SCANS' && r.type==='SCAN') || (activeFolder==='REPORTS' && r.type!=='SCAN' && r.type!=='MEDICATION')).map(file => (
+                      <div key={file.id} className="file-item" onClick={() => {setModalData(file); setActiveModal('PDF')}}>
+                        <div className="flex items-center gap-4">
+                          <FileText color="var(--primary-color)" />
+                          <div>
+                            <p style={{fontWeight: 600, margin:0}}>{file.title}.pdf</p>
+                            <p className="text-sm mt-1 text-secondary">{new Date(file.date).toLocaleDateString()} • {file.specialty}</p>
+                          </div>
+                        </div>
+                        <button className="badge btn-secondary">View PDF</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           } />
 
@@ -275,17 +299,17 @@ export default function PatientDashboard({ user }) {
             <div className="stagger-3">
               <h2 className="text-gradient mb-6">Medications</h2>
               <div className="glass-card">
-                <h3 className="mb-4">Current & Past Prescriptions</h3>
+                <h3 className="mb-4">Current Prescriptions</h3>
                 <div className="flex-col gap-3">
                   {profile.medicalRecords.filter(r => r.type === 'MEDICATION').map(m => (
-                    <div key={m.id} className="p-4 flex justify-between items-center" style={{background: 'rgba(0,0,0,0.2)', borderRadius: '12px', borderLeft: '4px solid var(--warning)'}}>
+                    <div key={m.id} className="p-4 flex justify-between items-center" style={{background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', borderLeft: '4px solid var(--warning)'}}>
                       <div>
-                        <h4 style={{margin:0, color: 'var(--warning)'}}>{m.title}</h4>
-                        <p className="text-sm mt-1">{m.content}</p>
+                        <h4 style={{margin:0, color: 'var(--text-primary)'}}>{m.title}</h4>
+                        <p className="text-sm mt-1 text-secondary">{m.content}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold">{new Date(m.date).toLocaleDateString()}</p>
-                        <button className="badge btn-secondary mt-2" onClick={() => setSelectedPdf(m)}>View Prescription</button>
+                        <p className="text-sm font-bold text-secondary mb-2">{new Date(m.date).toLocaleDateString()}</p>
+                        <button className="badge btn-secondary" onClick={() => {setModalData(m); setActiveModal('PDF')}}>View Document</button>
                       </div>
                     </div>
                   ))}
@@ -296,18 +320,21 @@ export default function PatientDashboard({ user }) {
 
           <Route path="/doctors" element={
             <div className="stagger-1">
-              <h2 className="text-gradient">Doctors & Visits</h2>
-              <p className="mb-6">Manage consent and view specific hospital activity.</p>
+              <h2 className="text-gradient">Doctors & Visits (Hospital Hub)</h2>
+              <p className="mb-6 text-secondary">Select a connected facility to book appointments and manage data consent.</p>
               
               {!hospitalFilter ? (
                 <div className="grid grid-2">
                   {profile.patientHospitals.map(ph => (
-                    <div key={ph.id} className="glass-card" style={{padding:0, overflow:'hidden', cursor:'pointer'}} onClick={() => setHospitalFilter(ph.hospitalId)}>
-                      {ph.hospital.imageUrl && <img src={ph.hospital.imageUrl} alt="Hospital" className="hospital-image" style={{margin:0, width:'100%', height:'160px'}}/>}
+                    <div key={ph.id} className="glass-card" style={{padding:0, overflow:'hidden'}}>
+                      {ph.hospital.imageUrl && <img src={ph.hospital.imageUrl} alt="Hospital" className="hospital-image" style={{margin:0, width:'100%', height:'160px', cursor:'pointer'}} onClick={() => setHospitalFilter(ph.hospitalId)}/>}
                       <div className="p-4" style={{padding: '24px'}}>
-                        <h3 style={{margin:0}}>{ph.hospital.name}</h3>
-                        <p className="text-sm mt-1"><MapPin size={12} className="inline mr-1"/>{ph.hospital.location}</p>
-                        <button className="btn mt-4 w-full">Access Facility & Consent</button>
+                        <div className="flex justify-between items-start">
+                          <h3 style={{margin:0}}>{ph.hospital.name}</h3>
+                          <button className="btn-secondary" style={{padding: '4px 8px', borderRadius: '4px'}} onClick={() => {setModalData(ph.hospital); setActiveModal('HOSPITAL_INFO')}}><Info size={16}/></button>
+                        </div>
+                        <p className="text-sm mt-1 text-secondary"><MapPin size={12} className="inline mr-1"/>{ph.hospital.location}</p>
+                        <button className="btn mt-4 w-full" onClick={() => setHospitalFilter(ph.hospitalId)}>Access Facility & Consent</button>
                       </div>
                     </div>
                   ))}
@@ -317,72 +344,62 @@ export default function PatientDashboard({ user }) {
                   <div className="flex justify-between items-center mb-8">
                     <div>
                       <h2 style={{margin:0}}>{allHospitals.find(h=>h.id === hospitalFilter)?.name}</h2>
-                      <p className="text-sm">Facility Vault, Appointments & Consent Management</p>
                     </div>
                     <button className="btn-secondary" onClick={() => setHospitalFilter(null)}>Back</button>
                   </div>
 
                   <div className="grid grid-2 gap-8">
-                    {/* Booking Form for this specific hospital */}
+                    {/* Booking Form with AI Recommendation */}
                     <div>
-                      <h3 className="mb-4">Book Appointment Here</h3>
+                      <h3 className="mb-4">Book Appointment</h3>
                       <form onSubmit={createAppointment} className="flex-col gap-2">
                         <input type="hidden" name="hospitalId" value={hospitalFilter} />
-                        <label className="text-sm">Select Doctor</label>
-                        <select name="doctorId" required>
-                          <option value="">Select Specialist</option>
-                          {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.map(d => (
-                            <option key={d.user.id} value={d.user.id}>{d.user.name} ({d.user.specialty})</option>
-                          ))}
-                        </select>
+                        <div>
+                          <label className="text-sm font-bold">Select Specialist</label>
+                          <select name="doctorId" required>
+                            <option value="">Choose...</option>
+                            {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.map(d => (
+                              <option key={d.user.id} value={d.user.id}>{d.user.name} ({d.user.specialty})</option>
+                            ))}
+                          </select>
+                        </div>
                         <div className="flex gap-4 mt-2">
-                          <div style={{flex: 1}}><label className="text-sm">Date</label><input type="date" name="appointmentDate" required /></div>
-                          <div style={{flex: 1}}>
-                            <label className="text-sm">Time Slot</label>
-                            <select name="timeSlot" required>
-                              <option value="09:00 AM">09:00 AM</option>
-                              <option value="10:30 AM">10:30 AM</option>
-                            </select>
+                          <div style={{flex: 1}}><label className="text-sm font-bold">Date</label><input type="date" name="appointmentDate" required /></div>
+                          <div style={{flex: 1}}><label className="text-sm font-bold">Time</label>
+                            <select name="timeSlot" required><option value="09:00 AM">09:00 AM</option><option value="11:30 AM">11:30 AM</option></select>
                           </div>
                         </div>
-                        <button type="submit" className="btn mt-4 w-full">Book Visit</button>
+                        <div className="mt-4 p-4" style={{background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px'}}>
+                          <label className="text-sm font-bold text-gradient">AI Triage / Recommendation (Optional)</label>
+                          <p className="text-sm text-secondary mb-2">Not sure who to book? Type your issue and AI will suggest the best hospital.</p>
+                          <div className="flex gap-2">
+                            <input type="text" value={bookingIssue} onChange={e=>setBookingIssue(e.target.value)} placeholder="e.g. Chest pain and sweating" />
+                            <button type="button" className="btn-secondary" onClick={getAiRecommendation} disabled={!bookingIssue || isRecommending}>Ask AI</button>
+                          </div>
+                          {aiRecommendation && <p className="text-sm mt-3" style={{color: 'var(--primary-color)', fontWeight: 600}}><Info size={14} className="inline mr-1"/> {aiRecommendation}</p>}
+                        </div>
+                        <button type="submit" className="btn mt-4 w-full">Confirm Booking</button>
                       </form>
                     </div>
 
                     {/* Consent Form */}
                     <div>
-                      <h3 className="mb-4">Manage Doctor Access</h3>
+                      <h3 className="mb-4">Data Privacy Consent</h3>
+                      <p className="text-sm text-secondary mb-4">You have full control over which doctors can see your longitudinal memory layer.</p>
                       <div className="flex-col gap-2">
-                        {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.map(d => (
-                          <div key={d.user.id} className="flex justify-between items-center" style={{background: 'rgba(0,0,0,0.2)', padding: '12px 16px', borderRadius: '12px'}}>
-                            <div className="flex items-center gap-3">
-                              {d.user.profileImageUrl ? <img src={d.user.profileImageUrl} className="avatar" style={{width:'36px', height:'36px'}} alt="Dr"/> : <div className="avatar bg-gray-500"></div>}
-                              <div>
-                                <p style={{margin:0, fontWeight:600}}>{d.user.name}</p>
-                                <p className="text-sm">{d.user.specialty}</p>
-                              </div>
+                        {allHospitals.find(h=>h.id === hospitalFilter)?.doctors.filter(d => d.user.role === 'DOCTOR').map(d => {
+                          // Simple mock check for consent
+                          return (
+                          <div key={d.user.id} className="flex justify-between items-center" style={{background: 'white', border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '12px'}}>
+                            <div>
+                              <p style={{margin:0, fontWeight:600}}>{d.user.name}</p>
+                              <p className="text-sm text-secondary">{d.user.specialty}</p>
                             </div>
-                            <button 
-                              onClick={() => handleToggleConsent(hospitalFilter, d.user.id, !isDoctorDenied(d.user.id))}
-                              className={`badge ${isDoctorDenied(d.user.id) ? '' : 'btn-secondary'}`}
-                              style={{
-                                background: isDoctorDenied(d.user.id) ? 'rgba(239, 71, 111, 0.2)' : 'rgba(6, 214, 160, 0.2)', 
-                                color: isDoctorDenied(d.user.id) ? 'var(--danger)' : 'var(--success)',
-                                border: `1px solid ${isDoctorDenied(d.user.id) ? 'var(--danger)' : 'var(--success)'}`
-                              }}
-                            >
-                              {isDoctorDenied(d.user.id) ? 'Revoked' : 'Granted'}
-                            </button>
+                            <button className="badge btn-secondary">Toggle Access</button>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
-                  </div>
-                  
-                  {/* Local Documents */}
-                  <div className="mt-8 pt-8" style={{borderTop: '1px solid var(--glass-border)'}}>
-                    <h3 className="mb-4">Facility Documents</h3>
-                    {renderFolderView(hospitalFilter)}
                   </div>
                 </div>
               )}
@@ -392,46 +409,153 @@ export default function PatientDashboard({ user }) {
           <Route path="/directory" element={
             <div className="stagger-2">
               <h2 className="text-gradient">Hospitals Directory</h2>
-              <div className="grid grid-2 mt-4">
-                {unjoinedHospitals.map(h => (
-                  <div key={h.id} className="glass-card" style={{padding:0, overflow:'hidden'}}>
-                    {h.imageUrl && <img src={h.imageUrl} alt="Hospital" className="hospital-image" style={{margin:0, width:'100%', height:'180px'}}/>}
-                    <div style={{padding: '24px'}}>
+              <p className="text-secondary mb-6">Financial and operational transparency to help you choose the best facility.</p>
+              
+              <div className="flex-col gap-6">
+                {allHospitals.map(h => (
+                  <div key={h.id} className="glass-card flex gap-6" style={{padding:0, overflow:'hidden'}}>
+                    {h.imageUrl && <img src={h.imageUrl} alt="Hospital" style={{width:'300px', objectFit:'cover'}}/>}
+                    <div style={{padding: '24px', flex: 1}}>
                       <div className="flex justify-between items-start">
-                        <h3 style={{margin:0, fontSize:'1.4rem'}}>{h.name}</h3>
-                        <div className="flex items-center gap-1 text-sm font-bold">
-                          <Star size={16} fill="#ffd166" color="#ffd166"/> {h.rating} <span style={{fontWeight:'normal', color:'var(--text-secondary)'}}>({h.reviewsCount})</span>
+                        <div>
+                          <h3 style={{margin:0, fontSize:'1.4rem'}}>{h.name}</h3>
+                          <p className="text-sm mt-1 text-secondary">{h.sector} • {h.facilityLevel}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button className="btn-secondary" style={{padding: '6px 12px', borderRadius: '4px'}} onClick={() => {setModalData(h); setActiveModal('HOSPITAL_INFO')}}><Info size={16} className="mr-1 inline"/> Deep Dive</button>
+                          {!joinedHospitalIds.includes(h.id) && <button className="btn" style={{padding: '6px 12px'}} onClick={() => {setModalData(h); setActiveModal('OTP')}}>Join Network</button>}
                         </div>
                       </div>
-                      <p className="text-sm mt-2"><MapPin size={14} className="inline mr-1"/>{h.location}</p>
-                      <button className="btn w-full mt-6" onClick={() => setOtpModal(h.id)}>Request Access</button>
+                      
+                      <div className="grid grid-3 mt-6">
+                        <div style={{background: '#f8fafc', padding: '12px', borderRadius: '8px'}}>
+                          <p className="text-sm text-secondary mb-1">Insurance</p>
+                          <p className="font-bold text-sm" style={{color: h.insuranceNetwork.includes('Cashless') ? 'var(--success)' : 'var(--text-primary)'}}>{h.insuranceNetwork}</p>
+                        </div>
+                        <div style={{background: '#f8fafc', padding: '12px', borderRadius: '8px'}}>
+                          <p className="text-sm text-secondary mb-1">ER Wait Time</p>
+                          <p className="font-bold text-sm" style={{color: h.erWaitTime > 60 ? 'var(--danger)' : 'var(--success)'}}>{h.erWaitTime} Mins</p>
+                        </div>
+                        <div style={{background: '#f8fafc', padding: '12px', borderRadius: '8px'}}>
+                          <p className="text-sm text-secondary mb-1">ICU Beds</p>
+                          <p className="font-bold text-sm" style={{color: h.icuBeds === 0 ? 'var(--danger)' : 'var(--primary-color)'}}>{h.icuBeds} Available</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-
-              {otpModal && (
-                <div className="modal-overlay">
-                  <div className="modal-content text-center flex-col items-center">
-                    <ShieldCheck size={48} color="var(--primary-color)" className="glow-effect mb-4" />
-                    <h3 className="mb-2">Identity Verification</h3>
-                    <form onSubmit={handleJoinSubmit} className="flex-col w-full gap-4 mt-4">
-                      <input type="text" placeholder="1234" value={otp} onChange={e => setOtp(e.target.value)} required maxLength="4" style={{textAlign:'center', fontSize: '2rem', letterSpacing: '12px'}} />
-                      <div className="flex gap-4 w-full">
-                        <button type="button" className="btn btn-secondary" style={{flex:1}} onClick={() => setOtpModal(null)}>Cancel</button>
-                        <button type="submit" className="btn" style={{flex:1}}>Verify</button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
             </div>
           } />
         </Routes>
 
-        {/* MOCK PDF VIEWER MODAL */}
-        {selectedPdf && (
-          <div className="modal-overlay" onClick={() => setSelectedPdf(null)}>
+        {/* MODALS */}
+        {activeModal === 'OTP' && (
+          <div className="modal-overlay">
+            <div className="modal-content text-center flex-col items-center">
+              <ShieldCheck size={48} color="var(--primary-color)" className="glow-effect mb-4" />
+              <h3 className="mb-2">Identity Verification</h3>
+              <p className="text-secondary text-sm">Enter OTP sent to your registered phone to join {modalData.name}.</p>
+              <form onSubmit={handleJoinSubmit} className="flex-col w-full gap-4 mt-4">
+                <input type="text" placeholder="1234" value={otp} onChange={e => setOtp(e.target.value)} required maxLength="4" style={{textAlign:'center', fontSize: '2rem', letterSpacing: '12px'}} />
+                <div className="flex gap-4 w-full">
+                  <button type="button" className="btn btn-secondary w-full" onClick={() => setActiveModal(null)}>Cancel</button>
+                  <button type="submit" className="btn w-full">Verify & Join</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {activeModal === 'HOSPITAL_INFO' && modalData && (
+          <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+            <div className="modal-content" onClick={e=>e.stopPropagation()} style={{maxWidth: '600px'}}>
+              <div className="flex justify-between items-center mb-6">
+                <h2 style={{margin:0}}>{modalData.name}</h2>
+                <button className="badge btn-secondary" onClick={()=>setActiveModal(null)}>Close</button>
+              </div>
+              <img src={modalData.imageUrl} style={{width: '100%', height: '200px', objectFit: 'cover', borderRadius: '12px', marginBottom: '20px'}}/>
+              
+              <div className="grid grid-2 gap-6 mb-6">
+                <div>
+                  <p className="text-sm text-secondary">Accreditations</p>
+                  <p className="font-bold">{modalData.accreditations}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-secondary">Base Consultation Fee</p>
+                  <p className="font-bold">₹{modalData.consultationFee}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-secondary">Patient Rating</p>
+                  <p className="font-bold flex items-center gap-1"><Star size={16} fill="#f59e0b" color="#f59e0b"/> {modalData.rating} ({modalData.reviewsCount})</p>
+                </div>
+                <div>
+                  <p className="text-sm text-secondary">30-Day Readmission Rate</p>
+                  <p className="font-bold" style={{color: modalData.readmissionRate > 5 ? 'var(--danger)' : 'var(--success)'}}>{modalData.readmissionRate}%</p>
+                </div>
+              </div>
+
+              <div style={{background: '#f8fafc', padding: '16px', borderRadius: '12px'}}>
+                <h4 className="mb-2 flex items-center gap-2"><Activity size={16} color="var(--primary-color)"/> Financial Transparency (Procedures)</h4>
+                {Object.entries(JSON.parse(modalData.procedureCosts || '{}')).map(([proc, cost]) => (
+                  <div key={proc} className="flex justify-between border-b py-2 text-sm">
+                    <span>{proc}</span>
+                    <strong>{cost}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeModal === 'PROFILE' && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="mb-4">Edit Profile</h2>
+              <form onSubmit={handleProfileUpdate} className="flex-col gap-4">
+                <div><label className="text-sm font-bold">Phone Number</label><input value={profileForm.phone} onChange={e=>setProfileForm({...profileForm, phone: e.target.value})} /></div>
+                <div><label className="text-sm font-bold">Address</label><input value={profileForm.address} onChange={e=>setProfileForm({...profileForm, address: e.target.value})} /></div>
+                <div><label className="text-sm font-bold">Allergies</label><input value={profileForm.allergies} onChange={e=>setProfileForm({...profileForm, allergies: e.target.value})} /></div>
+                <div><label className="text-sm font-bold">Chronic Conditions</label><input value={profileForm.chronicConditions} onChange={e=>setProfileForm({...profileForm, chronicConditions: e.target.value})} /></div>
+                <div className="flex gap-4 mt-4">
+                  <button type="button" className="btn btn-secondary w-full" onClick={() => setActiveModal(null)}>Cancel</button>
+                  <button type="submit" className="btn w-full">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {activeModal === 'UPLOAD' && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2 className="mb-4">Upload Medical Record</h2>
+              <p className="text-sm text-secondary mb-6">Manually add external reports to your unified memory layer.</p>
+              <form onSubmit={handleUploadSubmit} className="flex-col gap-4">
+                <div><label className="text-sm font-bold">Document Title</label><input value={uploadForm.title} onChange={e=>setUploadForm({...uploadForm, title: e.target.value})} required/></div>
+                <div className="grid grid-2">
+                  <div>
+                    <label className="text-sm font-bold">Type</label>
+                    <select value={uploadForm.type} onChange={e=>setUploadForm({...uploadForm, type: e.target.value})}>
+                      <option value="NOTE">Report/Note</option>
+                      <option value="LAB">Lab Result</option>
+                      <option value="SCAN">Imaging/Scan</option>
+                    </select>
+                  </div>
+                  <div><label className="text-sm font-bold">Specialty</label><input value={uploadForm.specialty} onChange={e=>setUploadForm({...uploadForm, specialty: e.target.value})} required/></div>
+                </div>
+                <div><label className="text-sm font-bold">Findings / Details (Mock Text)</label><textarea rows="4" className="w-full" style={{padding:'12px', border:'1px solid #cbd5e1', borderRadius:'8px'}} value={uploadForm.content} onChange={e=>setUploadForm({...uploadForm, content: e.target.value})} required></textarea></div>
+                <div className="flex gap-4 mt-4">
+                  <button type="button" className="btn btn-secondary w-full" onClick={() => setActiveModal(null)}>Cancel</button>
+                  <button type="submit" className="btn w-full">Upload File</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {activeModal === 'PDF' && modalData && (
+          <div className="modal-overlay" onClick={() => setActiveModal(null)}>
             <div className="pdf-viewer animate-fade-in" onClick={e => e.stopPropagation()}>
               <div className="pdf-header">
                 <div>
@@ -439,23 +563,23 @@ export default function PatientDashboard({ user }) {
                   <p style={{margin:0, color: '#666'}}>CONFIDENTIAL MEDICAL RECORD</p>
                 </div>
                 <div className="text-right">
-                  <p><strong>Date:</strong> {new Date(selectedPdf.date).toLocaleDateString()}</p>
+                  <p><strong>Date:</strong> {new Date(modalData.date).toLocaleDateString()}</p>
                   <p><strong>Patient ID:</strong> {user.id.split('-')[0]}</p>
                 </div>
               </div>
               <div style={{marginBottom: '2rem'}}>
                 <h3 style={{color: '#0055ff', borderBottom: '1px solid #ccc', paddingBottom: '8px'}}>DOCUMENT DETAILS</h3>
-                <p><strong>Title:</strong> {selectedPdf.title}</p>
-                <p><strong>Department:</strong> {selectedPdf.specialty}</p>
-                <p><strong>Record Type:</strong> {selectedPdf.type}</p>
+                <p><strong>Title:</strong> {modalData.title}</p>
+                <p><strong>Department:</strong> {modalData.specialty}</p>
+                <p><strong>Record Type:</strong> {modalData.type}</p>
               </div>
               <div style={{padding: '2rem', background: '#f5f5f5', borderLeft: '4px solid #0055ff', minHeight: '200px'}}>
                 <h4 style={{color: '#333', marginBottom: '1rem'}}>CLINICAL NOTES / FINDINGS:</h4>
-                <p style={{fontSize: '1.1rem', lineHeight: '1.8', whiteSpace: 'pre-wrap'}}>{selectedPdf.content}</p>
+                <p style={{fontSize: '1.1rem', lineHeight: '1.8', whiteSpace: 'pre-wrap'}}>{modalData.content}</p>
               </div>
               <div className="flex justify-between items-center mt-8" style={{borderTop: '1px solid #ccc', paddingTop: '1rem'}}>
                 <p style={{color: '#999', fontSize: '0.8rem'}}>Digitally signed and verified by AuraHealth Cryptographic Layer.</p>
-                <button className="btn" onClick={() => setSelectedPdf(null)}>Close Document</button>
+                <button className="btn" onClick={() => setActiveModal(null)}>Close Document</button>
               </div>
             </div>
           </div>

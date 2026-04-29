@@ -124,6 +124,30 @@ async def chat_with_data(req: ChatRequest):
         print(e)
         raise HTTPException(status_code=500, detail="Chat failed")
 
+class HospitalRecommendationRequest(BaseModel):
+    issue: str
+    hospitals: list
+
+@app.post("/api/recommend-hospital")
+async def recommend_hospital(req: HospitalRecommendationRequest):
+    hospitals_text = "\n".join([f"- {h['name']}: Sector: {h['sector']}, Facilities: {h['facilityLevel']}, Specialties: {h['specialties']}, ICU Beds: {h['icuBeds']}, Wait: {h['erWaitTime']}m" for h in req.hospitals])
+    
+    prompt = f"""
+    A patient has the following medical issue: "{req.issue}"
+    
+    Here is a list of available hospitals:
+    {hospitals_text}
+    
+    Which hospital is the absolute best choice for this issue based on specialties, sector (private vs govt), and ICU availability if it's severe? 
+    Give a very short (2 sentence) recommendation and explicitly name the hospital.
+    """
+    try:
+        response = model.generate_content(prompt)
+        return {"recommendation": response.text}
+    except Exception as e:
+        print(e)
+        return {"recommendation": "Unable to generate recommendation at this time."}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

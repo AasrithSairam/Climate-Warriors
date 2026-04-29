@@ -256,12 +256,38 @@ export default function DoctorDashboard({ user }) {
                       {activeTab === 'PRESCRIBE' && (
                         <div className="animate-fade-in">
                           <h3 className="mb-4 flex items-center gap-2"><Pill size={20}/> Prescription Panel</h3>
+                          
+                          {/* Triage Data Display */}
+                          {appointments.find(a => a.patientId === selectedPatient.user.id && a.status === 'DOCTOR')?.triageData && (
+                            <div className="mb-6 p-4" style={{background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px'}}>
+                              <h4 className="mb-3 flex items-center gap-2" style={{color: 'var(--primary-color)'}}><Activity size={18}/> Nurse Triage Vitals</h4>
+                              {(() => {
+                                const tr = appointments.find(a => a.patientId === selectedPatient.user.id && a.status === 'DOCTOR').triageData;
+                                return (
+                                  <>
+                                    <div className="grid grid-3 gap-4 mb-4">
+                                      <div><p className="text-sm text-secondary">BP</p><p className="font-bold">{tr.bp} mmHg</p></div>
+                                      <div><p className="text-sm text-secondary">Heart Rate</p><p className="font-bold">{tr.heartRate} bpm</p></div>
+                                      <div><p className="text-sm text-secondary">SpO2</p><p className="font-bold">{tr.spo2}%</p></div>
+                                      <div><p className="text-sm text-secondary">Blood Sugar</p><p className="font-bold">{tr.sugar} mg/dL</p></div>
+                                      <div><p className="text-sm text-secondary">Weight</p><p className="font-bold">{tr.weight} kg</p></div>
+                                      <div><p className="text-sm text-secondary">Breath Training</p><p className="font-bold">{tr.breathTraining}</p></div>
+                                    </div>
+                                    <div style={{background: 'white', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0'}}>
+                                      <p className="text-sm font-bold mb-1">Chief Complaint (Nurse Notes)</p>
+                                      <p className="text-sm">{tr.chiefComplaint}</p>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+
                           <form onSubmit={(e) => {
                             e.preventDefault();
                             const formData = new FormData(e.target);
-                            // Find active appointment
-                            const activeAppt = appointments.find(a => a.patientId === selectedPatient.user.id && a.status === 'ACCEPTED');
-                            if (!activeAppt) return alert('No active, accepted appointment found for this patient.');
+                            const activeAppt = appointments.find(a => a.patientId === selectedPatient.user.id && a.status === 'DOCTOR');
+                            if (!activeAppt) return alert('No active, triaged appointment found for this patient.');
 
                             let contentStr = `${formData.get('medicationName')} - Quantity: ${formData.get('quantity')}\nInstructions: ${formData.get('instructions')}`;
                             axios.post(`http://localhost:3001/api/appointments/${activeAppt.id}/prescribe`, {
@@ -269,12 +295,13 @@ export default function DoctorDashboard({ user }) {
                               title: 'Prescription', type: 'MEDICATION',
                               specialty: user.specialty, content: contentStr
                             }).then(() => {
-                              alert('Prescription saved to Memory Layer.');
+                              alert('Prescription saved to Memory Layer. Appointment Completed.');
                               e.target.reset();
-                              handleSelectPatient(selectedPatient); 
+                              fetchData();
+                              setActiveTab('SUMMARY');
                             });
                           }} className="flex-col gap-4">
-                            <div className="flex items-center gap-2 p-3 text-sm" style={{background: 'rgba(255,209,102,0.1)', color: 'var(--warning)', borderRadius: '8px'}}>
+                            <div className="flex items-center gap-2 p-3 text-sm" style={{background: 'rgba(255,209,102,0.1)', color: 'var(--warning)', borderRadius: '8px', border: '1px solid #fcd34d'}}>
                               <AlertTriangle size={16}/> Warning: Patient is allergic to {selectedPatient.user.allergies}. Please verify drug conflicts.
                             </div>
                             
