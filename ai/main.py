@@ -18,7 +18,6 @@ app.add_middleware(
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Use a standard Gemini model
 try:
     model = genai.GenerativeModel('gemini-2.5-flash')
 except:
@@ -28,42 +27,102 @@ class SynthesisRequest(BaseModel):
     patient_name: str
     doctor_specialty: str
     records: list
+    allergies: str
+    chronic_conditions: str
+
+class ChatRequest(BaseModel):
+    patient_name: str
+    question: str
+    records: list
+    allergies: str
+    chronic_conditions: str
 
 @app.post("/api/synthesize")
 async def synthesize_records(req: SynthesisRequest):
     if not req.records:
-        return {"summary": "No accessible medical records found for this patient."}
+        return {"summary": "No accessible medical records found for this patient.", "is_structured": False}
     
-    # Format the records for the prompt
+    records_text = "\n".join([
+        f"- [{r['date']}] {r['type']} ({r['specialty']}): {r['title']} -> {r['content']}"
+        for r in req.records
+    ])
+
+    if req.doctor_specialty == "Patient Self-Review":
+        # Generate Patient Dashboard Insights
+        prompt = f"""
+        You are a helpful AI health assistant for a patient named {req.patient_name}.
+        Analyze their medical history and provide meaningful Health Insights.
+
+        Allergies: {req.allergies}
+        Chronic Conditions: {req.chronic_conditions}
+        Records:
+        {records_text}
+
+        Instructions:
+        1. Identify overall health trends (e.g., blood pressure, repeated issues).
+        2. Provide risk alerts if necessary.
+        3. Offer personalized, general wellness suggestions.
+        Keep it encouraging and easy to understand (avoid overly complex medical jargon).
+        Format your response nicely with bullet points. Do not hallucinante.
+        """
+        response = model.generate_content(prompt)
+        return {"summary": response.text, "is_structured": False}
+    else:
+        # Generate Doctor 10-Second Snapshot
+        prompt = f"""
+        You are the 'Patient Memory Layer' AI. Provide a 10-second snapshot for a {req.doctor_specialty}.
+        
+        Patient Name: {req.patient_name}
+        Allergies: {req.allergies}
+        Chronic Conditions: {req.chronic_conditions}
+        
+        Records:
+        {records_text}
+
+        Instructions:
+        Return exactly 4 sections clearly labeled:
+        1. Conditions (List the most relevant chronic/past conditions)
+        2. Allergies (List known allergies)
+        3. Current Medications (Extract active medications from records)
+        4. Key Risks (Predict risk complications or drug interactions based on {req.doctor_specialty} context)
+        
+        Keep each section extremely brief (bullet points). Do NOT hallucinate data.
+        """
+        response = model.generate_content(prompt)
+        return {"summary": response.text, "is_structured": True}
+
+@app.post("/api/chat")
+async def chat_with_data(req: ChatRequest):
+    if not req.records:
+        return {"answer": "I cannot answer as the patient has revoked access to their records."}
+
     records_text = "\n".join([
         f"- [{r['date']}] {r['type']} ({r['specialty']}): {r['title']} -> {r['content']}"
         for r in req.records
     ])
 
     prompt = f"""
-    You are a medical AI assistant acting as the 'Patient Memory Layer'.
-    Your job is to synthesize a patient's medical records into a concise, highly relevant summary 
-    tailored specifically for a doctor at the point of care.
+    You are a medical AI assistant answering questions about a patient named {req.patient_name}.
+    You have access to their medical records.
 
-    Patient Name: {req.patient_name}
-    Doctor's Specialty: {req.doctor_specialty}
-
-    Raw Medical Records (filtered by patient consent):
+    Allergies: {req.allergies}
+    Chronic Conditions: {req.chronic_conditions}
+    Records:
     {records_text}
 
+    The doctor asks: "{req.question}"
+    
     Instructions:
-    1. Summarize the most important information relevant to the doctor's specialty ({req.doctor_specialty}).
-    2. Mention any critical cross-specialty warnings (e.g., allergies or major conditions) if they are present in the provided records.
-    3. Keep it professional, brief, and structured with bullet points.
-    4. Do NOT hallucinate data. Only use the provided records.
+    Answer the doctor's question directly and concisely based ONLY on the provided records. 
+    If the information is not in the records, say "I don't have information on that in the current records."
+    Do not guess or give general medical advice.
     """
-
     try:
         response = model.generate_content(prompt)
-        return {"summary": response.text}
+        return {"answer": response.text}
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=500, detail="Failed to synthesize memory layer")
+        raise HTTPException(status_code=500, detail="Chat failed")
 
 if __name__ == "__main__":
     import uvicorn

@@ -8,13 +8,16 @@ generator client {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  role      String   // "PATIENT" or "DOCTOR"
-  name      String
-  email     String   @unique
-  password  String
-  specialty String?  
-  dob       DateTime? // For the timeline
+  id              String   @id @default(uuid())
+  role            String   // "PATIENT" or "DOCTOR"
+  name            String
+  email           String   @unique
+  password        String
+  specialty       String?  
+  dob             DateTime? 
+  profileImageUrl String?  // New field
+  allergies       String?  @default("None")
+  chronicConditions String? @default("None")
   
   patientHospitals HospitalPatient[]
   medicalRecords   MedicalRecord[]  @relation("PatientRecords")
@@ -28,9 +31,13 @@ model User {
 }
 
 model Hospital {
-  id        String   @id @default(uuid())
-  name      String
-  location  String
+  id           String   @id @default(uuid())
+  name         String
+  location     String
+  imageUrl     String?  // New field
+  rating       Float?   // New field
+  reviewsCount Int?     // New field
+  specialties  String?  // New field, comma separated
   
   patients  HospitalPatient[]
   doctors   HospitalDoctor[]
@@ -71,7 +78,7 @@ model Appointment {
   doctor      User     @relation("DoctorAppointments", fields: [doctorId], references: [id])
   hospital    Hospital @relation(fields: [hospitalId], references: [id])
   
-  status      String   // "PENDING", "ACCEPTED", "COMPLETED"
+  status      String   
   appointmentDate String?
   timeSlot    String?
   createdAt   DateTime @default(now())
@@ -89,10 +96,11 @@ model MedicalRecord {
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
   
   title       String
-  type        String   // "NOTE", "LAB", "MEDICATION", "ALLERGY", "VACCINE"
+  type        String   // "NOTE", "LAB", "MEDICATION", "VACCINE", "SCAN"
   specialty   String   
   content     String   
   date        DateTime @default(now())
+  documentUrl String?  // New field to trigger Mock PDF viewer
 }
 
 model ConsentRule {
@@ -118,7 +126,7 @@ model Issue {
   
   title       String
   description String
-  status      String   // "OPEN", "RESOLVED"
+  status      String   
   
   createdAt   DateTime @default(now())
 }
