@@ -3,7 +3,8 @@ import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
-import NurseDashboard from './pages/NurseDashboard'; // NEW
+import NurseDashboard from './pages/NurseDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import { Activity, Globe, Info } from 'lucide-react';
 
 export default function App() {
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/patient/*" element={user?.role === 'PATIENT' ? <PatientDashboard user={user} /> : <Login setUser={setUser}/>} />
         <Route path="/doctor/*" element={user?.role === 'DOCTOR' ? <DoctorDashboard user={user} /> : <Login setUser={setUser}/>} />
         <Route path="/nurse/*" element={user?.role === 'NURSE' ? <NurseDashboard user={user} /> : <Login setUser={setUser}/>} />
+        <Route path="/admin/*" element={user?.role === 'ADMIN' ? <AdminDashboard user={user} /> : <Login setUser={setUser}/>} />
       </Routes>
     </div>
   );

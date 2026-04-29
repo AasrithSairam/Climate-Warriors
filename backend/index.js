@@ -233,4 +233,35 @@ app.post('/api/upload-record', upload.single('file'), async (req, res) => {
   }
 });
 
+// Admin Governance
+app.get('/api/admins/:id/hospital', async (req, res) => {
+  try {
+    const admin = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      include: {
+        adminHospitals: {
+          include: {
+            hospital: {
+              include: {
+                doctors: { include: { user: true } },
+                patients: { include: { user: true } },
+                appointments: { include: { patient: true, doctor: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!admin || !admin.adminHospitals.length) {
+      return res.status(404).json({ error: 'Hospital not found for this admin' });
+    }
+
+    res.json(admin.adminHospitals[0].hospital);
+  } catch (error) {
+    console.error('Admin Fetch Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(3001, () => console.log('Backend running on http://localhost:3001'));

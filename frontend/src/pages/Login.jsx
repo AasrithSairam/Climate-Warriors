@@ -18,6 +18,7 @@ export default function Login({ setUser }) {
       if (res.data.role === 'PATIENT') nav('/patient');
       else if (res.data.role === 'DOCTOR') nav('/doctor');
       else if (res.data.role === 'NURSE') nav('/nurse');
+      else if (res.data.role === 'ADMIN') nav('/admin');
     } catch (err) {
       setError('Invalid credentials');
     }
@@ -62,9 +63,10 @@ export default function Login({ setUser }) {
           <div className="mt-8 pt-8" style={{borderTop: '1px solid var(--glass-border)'}}>
             <p className="text-sm font-bold mb-4">Demo Accounts:</p>
             <div className="flex gap-2 mb-2">
-              <button className="badge btn-secondary" onClick={()=>setEmail('john@example.com')}>Patient</button>
-              <button className="badge btn-secondary" onClick={()=>setEmail('sarah@example.com')}>Doctor</button>
-              <button className="badge btn-secondary" onClick={()=>setEmail('priya@example.com')}>Nurse</button>
+              <button className="badge btn-secondary" onClick={()=>{setEmail('john@example.com'); setPassword('password123')}}>Patient</button>
+              <button className="badge btn-secondary" onClick={()=>{setEmail('sarah@example.com'); setPassword('password123')}}>Doctor</button>
+              <button className="badge btn-secondary" onClick={()=>{setEmail('priya@example.com'); setPassword('password123')}}>Nurse</button>
+              <button className="badge btn-secondary" onClick={()=>{setEmail('admin_1@aura.com'); setPassword('admin123')}}>Admin</button>
             </div>
           </div>
         </div>

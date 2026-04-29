@@ -30,9 +30,21 @@ model User {
   consents         ConsentRule[]
   patientAppointments Appointment[] @relation("PatientAppointments")
   doctorAppointments  Appointment[] @relation("DoctorAppointments")
+  adminHospitals  HospitalAdmin[]
   issues           Issue[]
   
   createdAt DateTime @default(now())
+}
+
+model HospitalAdmin {
+  id         String   @id @default(uuid())
+  userId     String
+  hospitalId String
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, hospitalId])
 }
 
 model Hospital {
@@ -58,6 +70,7 @@ model Hospital {
   
   patients  HospitalPatient[]
   doctors   HospitalDoctor[]
+  admins    HospitalAdmin[]
   appointments Appointment[]
   issues       Issue[]
   
