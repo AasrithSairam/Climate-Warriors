@@ -103,8 +103,16 @@ export default function PatientDashboard({ user }) {
 
   const handleJoinSubmit = async (e) => {
     e.preventDefault();
-    if (otp !== '1234') return alert('Invalid OTP.');
-    await axios.post(`http://localhost:3001/api/patients/${user.id}/join`, { hospitalId: modalData.id });
+    const formData = new FormData(e.target);
+    formData.append('userId', user.id);
+    formData.append('hospitalId', modalData.id);
+    formData.append('role', 'PATIENT');
+    
+    await axios.post(`http://localhost:3001/api/requests`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    
+    alert('Network Admission Request submitted. Hospital admins will review your government document shortly.');
     setActiveModal(null); setOtp(''); fetchData();
   };
 
@@ -531,7 +539,7 @@ export default function PatientDashboard({ user }) {
               
               {!hospitalFilter ? (
                 <div className="grid grid-2">
-                  {profile.patientHospitals.map(ph => (
+                  {profile.patientHospitals.length > 0 ? profile.patientHospitals.map(ph => (
                     <div key={ph.id} className="glass-card" style={{padding:0, overflow:'hidden', borderBottom: '4px solid var(--primary-color)'}}>
                       <div style={{padding: '24px'}}>
                         <div className="flex justify-between items-start mb-4">
@@ -547,7 +555,14 @@ export default function PatientDashboard({ user }) {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="glass-card col-span-2 text-center py-12" style={{border: '2px dashed var(--glass-border)'}}>
+                      <Activity size={48} className="mb-4 mx-auto" color="var(--secondary-color)" />
+                      <h3>No Connected Facilities</h3>
+                      <p className="text-secondary mb-6">You need to join a hospital network to access specialists and book visits.</p>
+                      <Link to="/patient/directory" className="btn" style={{textDecoration: 'none', display: 'inline-block'}}>Explore Hospitals Directory</Link>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="stagger-1">
@@ -654,15 +669,38 @@ export default function PatientDashboard({ user }) {
         {/* MODALS */}
         {activeModal === 'OTP' && (
           <div className="modal-overlay">
-            <div className="modal-content text-center flex-col items-center">
-              <ShieldCheck size={48} color="var(--primary-color)" className="glow-effect mb-4" />
-              <h3 className="mb-2">Identity Verification</h3>
-              <p className="text-secondary text-sm">Enter OTP sent to your registered phone to join {modalData.name}.</p>
-              <form onSubmit={handleJoinSubmit} className="flex-col w-full gap-4 mt-4">
-                <input type="text" placeholder="1234" value={otp} onChange={e => setOtp(e.target.value)} required maxLength="4" style={{textAlign:'center', fontSize: '2rem', letterSpacing: '12px'}} />
-                <div className="flex gap-4 w-full">
+            <div className="modal-content" style={{maxWidth: '500px'}}>
+              <div className="text-center mb-6">
+                <ShieldCheck size={48} color="var(--primary-color)" className="glow-effect mb-4 mx-auto" />
+                <h3 className="mb-2">Network Admission Form</h3>
+                <p className="text-secondary text-sm">Please provide your credentials to join {modalData.name}. An administrator will verify your document.</p>
+              </div>
+              
+              <form onSubmit={handleJoinSubmit} className="flex-col gap-4 mt-4">
+                <div className="grid grid-2 gap-4">
+                  <div><label className="text-sm font-bold">Full Name (Optional)</label><input name="name" defaultValue={user.name} /></div>
+                  <div><label className="text-sm font-bold">Age (Optional)</label><input name="age" type="number" /></div>
+                </div>
+                <div className="grid grid-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold">Gender (Optional)</label>
+                    <select name="gender">
+                      <option value="">Choose...</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div><label className="text-sm font-bold">Phone Number (Optional)</label><input name="phone" /></div>
+                </div>
+                <div>
+                  <label className="text-sm font-bold">Government Document (Optional)</label>
+                  <input type="file" name="document" accept="image/*,.pdf" className="mt-2" />
+                </div>
+                
+                <div className="flex gap-4 mt-6">
                   <button type="button" className="btn btn-secondary w-full" onClick={() => setActiveModal(null)}>Cancel</button>
-                  <button type="submit" className="btn w-full">Verify & Join</button>
+                  <button type="submit" className="btn w-full">Submit Admission Request</button>
                 </div>
               </form>
             </div>

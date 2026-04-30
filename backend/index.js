@@ -15,6 +15,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(cors());
 app.use(express.json());
 
+app.get('/ping', (req, res) => res.json({ status: 'AuraHealth Backend Online', timestamp: new Date() }));
+
 // Auth
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
@@ -234,26 +236,84 @@ app.post('/api/upload-record', upload.single('file'), async (req, res) => {
 });
 
 // Admin Governance
+// Access Requests
+app.post('/api/requests', upload.single('document'), async (req, res) => {
+  const { userId, hospitalId, role, name, age, gender, phone } = req.body;
+  const file = req.file;
+  
+  try {
+    const request = await prisma.accessRequest.create({
+      data: { 
+        userId, 
+        hospitalId, 
+        role, 
+        status: 'PENDING',
+        name,
+        age,
+        gender,
+        phone,
+        documentUrl: file ? `/uploads/${file.filename}` : null
+      }
+    });
+    res.json(request);
+  } catch (err) {
+    console.error('Request Creation Error:', err);
+    res.status(400).json({ error: 'Failed to create request' });
+  }
+});
+
+app.post('/api/requests/:id/action', async (req, res) => {
+  const { action } = req.body; // 'APPROVE' or 'REJECT'
+  try {
+    const request = await prisma.accessRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    if (action === 'APPROVE') {
+      if (request.role === 'PATIENT') {
+        await prisma.hospitalPatient.create({ data: { userId: request.userId, hospitalId: request.hospitalId } });
+      } else {
+        await prisma.hospitalDoctor.create({ data: { userId: request.userId, hospitalId: request.hospitalId } });
+      }
+    }
+
+    const updated = await prisma.accessRequest.update({
+      where: { id: req.params.id },
+      data: { status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' }
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Action Error:', err);
+    res.status(500).json({ error: 'Failed to process request' });
+  }
+});
+
 app.get('/api/admins/:id/hospital', async (req, res) => {
   try {
-    // Direct hospital lookup for admin
-    const adminLink = await prisma.hospitalAdmin.findFirst({
-      where: { userId: req.params.id },
+    const adminId = req.params.id;
+    const adminLinks = await prisma.$queryRawUnsafe(
+      `SELECT hospitalId FROM HospitalAdmin WHERE userId = '${adminId}' LIMIT 1`
+    );
+    
+    if (!adminLinks || adminLinks.length === 0) {
+      return res.status(404).json({ error: 'Hospital link not found' });
+    }
+    
+    const hospitalId = adminLinks[0].hospitalId;
+
+    const hospital = await prisma.hospital.findUnique({
+      where: { id: hospitalId },
       include: {
-        hospital: {
-          include: {
-            doctors: { include: { user: true } },
-            patients: { include: { user: true } },
-            appointments: { include: { patient: true, doctor: true } }
-          }
-        }
+        doctors: { include: { user: true } },
+        patients: { include: { user: true } },
+        appointments: { include: { patient: true, doctor: true } },
+        requests: { where: { status: 'PENDING' }, include: { user: true } }
       }
     });
 
-    if (!adminLink) return res.status(404).json({ error: 'Hospital not found' });
-    res.json(adminLink.hospital);
+    res.json(hospital);
   } catch (error) {
-    console.error('Admin Fetch Error:', error);
+    console.error('Admin Override Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

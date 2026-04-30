@@ -31,9 +31,30 @@ model User {
   patientAppointments Appointment[] @relation("PatientAppointments")
   doctorAppointments  Appointment[] @relation("DoctorAppointments")
   adminHospitals  HospitalAdmin[]
+  requests         AccessRequest[]
   issues           Issue[]
   
   createdAt DateTime @default(now())
+}
+
+model AccessRequest {
+  id           String   @id @default(uuid())
+  userId       String
+  hospitalId   String
+  role         String   // 'PATIENT' or 'DOCTOR'
+  status       String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  
+  // Identity Fields
+  name         String?
+  age          String?
+  gender       String?
+  phone        String?
+  documentUrl  String?
+  
+  createdAt    DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
 }
 
 model HospitalAdmin {
@@ -71,6 +92,7 @@ model Hospital {
   patients  HospitalPatient[]
   doctors   HospitalDoctor[]
   admins    HospitalAdmin[]
+  requests  AccessRequest[]
   appointments Appointment[]
   issues       Issue[]
   

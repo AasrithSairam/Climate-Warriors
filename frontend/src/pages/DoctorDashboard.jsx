@@ -100,6 +100,7 @@ export default function DoctorDashboard({ user }) {
         </div>
         {navItem('/doctor', <Calendar size={20} />, 'Dashboard')}
         {navItem('/doctor/patients', <Users size={20} />, 'My Patients')}
+        {navItem('/doctor/hospitals', <Activity size={20} />, 'My Hospitals')}
       </div>
 
       <div className="dashboard-content">
@@ -136,6 +137,35 @@ export default function DoctorDashboard({ user }) {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          } />
+
+          <Route path="/hospitals" element={
+            <div className="animate-fade-in">
+              <h2 className="mb-6">Hospital Network Access</h2>
+              <div className="grid grid-3 gap-6">
+                {allHospitals.map(h => {
+                  const isMember = user.hospitals?.some(uh => uh.hospitalId === h.id);
+                  return (
+                    <div key={h.id} className="glass-card" style={{padding: '24px'}}>
+                      <Activity className="mb-4" color="var(--primary-color)"/>
+                      <h3 className="mb-1">{h.name}</h3>
+                      <p className="text-secondary text-sm mb-4">{h.location}</p>
+                      {isMember ? (
+                        <div className="badge" style={{background: 'var(--success)', color: 'white'}}>Verified Specialist</div>
+                      ) : (
+                        <button className="btn w-full" onClick={() => {
+                          axios.post('http://localhost:3001/api/requests', {
+                            userId: user.id,
+                            hospitalId: h.id,
+                            role: 'DOCTOR'
+                          }).then(() => alert('Access request submitted to admin.'));
+                        }}>Request Network Access</button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           } />
