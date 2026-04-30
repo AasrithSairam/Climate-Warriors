@@ -1,0 +1,38 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Environment Variables
+.env
+.env.local
+.env.*
+
+# Database
+dev.db
+dev.db-journal
+*.db
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.zip
+
+# Root paths
+src/**/node_modules/
+src/**/venv/
+src/**/.venv/
+src/**/dist/
+src/**/build/
+src/**/dev.db

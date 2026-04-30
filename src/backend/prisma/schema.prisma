@@ -1,0 +1,203 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String   @id @default(uuid())
+  role            String   // "PATIENT", "DOCTOR", "NURSE"
+  name            String
+  email           String   @unique
+  password        String
+  specialty       String?  
+  dob             DateTime? 
+  profileImageUrl String?  
+  allergies       String?  @default("None")
+  chronicConditions String? @default("None")
+  
+  // Profile Editable fields
+  phone           String?
+  address         String?
+  language        String   @default("EN") // EN, TA, HI
+  
+  patientHospitals HospitalPatient[]
+  medicalRecords   MedicalRecord[]  @relation("PatientRecords")
+  doctorHospitals  HospitalDoctor[]
+  consents         ConsentRule[]
+  patientAppointments Appointment[] @relation("PatientAppointments")
+  doctorAppointments  Appointment[] @relation("DoctorAppointments")
+  adminHospitals  HospitalAdmin[]
+  requests         AccessRequest[]
+  issues           Issue[]
+  
+  createdAt DateTime @default(now())
+}
+
+model AccessRequest {
+  id           String   @id @default(uuid())
+  userId       String
+  hospitalId   String
+  role         String   // 'PATIENT' or 'DOCTOR'
+  status       String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  
+  // Identity Fields
+  name         String?
+  age          String?
+  gender       String?
+  phone        String?
+  documentUrl  String?
+  
+  createdAt    DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+}
+
+model HospitalAdmin {
+  id         String   @id @default(uuid())
+  userId     String
+  hospitalId String
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, hospitalId])
+}
+
+model Hospital {
+  id           String   @id @default(uuid())
+  name         String
+  location     String
+  imageUrl     String?  
+  rating       Float?   
+  reviewsCount Int?     
+  specialties  String?  
+  
+  // New Transparency Metrics
+  sector         String?  // Private, Govt, Trust
+  facilityLevel  String?  // Multispeciality, General
+  consultationFee Int?    // Base fee
+  procedureCosts String?  // Stringified JSON e.g. "{ 'Surgery': '95000-280000' }"
+  insuranceNetwork String? // "Cashless, In-Network"
+  readmissionRate Float?  // Percentage
+  accreditations String?  // "NABH, JCI"
+  erWaitTime     Int?     // Minutes
+  icuBeds        Int?     // Available count
+  isDigitallyIntegrated Boolean @default(true)
+  
+  patients  HospitalPatient[]
+  doctors   HospitalDoctor[]
+  admins    HospitalAdmin[]
+  requests  AccessRequest[]
+  appointments Appointment[]
+  issues       Issue[]
+  
+  createdAt DateTime @default(now())
+}
+
+model HospitalPatient {
+  id         String   @id @default(uuid())
+  userId     String
+  hospitalId String
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, hospitalId])
+}
+
+model HospitalDoctor {
+  id         String   @id @default(uuid())
+  userId     String
+  hospitalId String
+  user       User     @relation(fields: [userId], references: [id])
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, hospitalId])
+}
+
+model Appointment {
+  id          String   @id @default(uuid())
+  patientId   String
+  doctorId    String
+  hospitalId  String
+  patient     User     @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctor      User     @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  hospital    Hospital @relation(fields: [hospitalId], references: [id])
+  
+  status      String   // PENDING -> TRIAGE -> DOCTOR -> COMPLETED
+  appointmentDate String?
+  timeSlot    String?
+  issueString String?  // Written by nurse or patient
+  
+  createdAt   DateTime @default(now())
+  
+  records     MedicalRecord[]
+  triageData  TriageData?
+}
+
+model TriageData {
+  id            String   @id @default(uuid())
+  appointmentId String   @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  
+  heartRate     Int?
+  spo2          Int?
+  bp            String?
+  sugar         Int?
+  weight        Float?
+  breathTraining String?
+  chiefComplaint String?
+  
+  createdAt     DateTime @default(now())
+}
+
+model MedicalRecord {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     User     @relation("PatientRecords", fields: [patientId], references: [id])
+  
+  hospitalId  String
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  
+  title       String
+  type        String   // "NOTE", "LAB", "MEDICATION", "VACCINE", "SCAN"
+  specialty   String   
+  content     String   
+  date        DateTime @default(now())
+  documentUrl String?  
+}
+
+model ConsentRule {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     User     @relation(fields: [patientId], references: [id])
+  
+  hospitalId  String?  
+  doctorId    String?  
+  specialty   String?  
+  
+  isAllowed   Boolean  @default(true) 
+  
+  createdAt   DateTime @default(now())
+}
+
+model Issue {
+  id          String   @id @default(uuid())
+  patientId   String
+  hospitalId  String
+  patient     User     @relation(fields: [patientId], references: [id])
+  hospital    Hospital @relation(fields: [hospitalId], references: [id])
+  
+  title       String
+  description String
+  status      String   
+  
+  createdAt   DateTime @default(now())
+}
