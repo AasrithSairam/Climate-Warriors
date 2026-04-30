@@ -90,34 +90,14 @@ class Orchestrator:
         brief_text += "AuraHealth ML models indicate a **Stable-to-Improving trajectory**. Primary risk signals are focused on metabolic homeostasis and cardiovascular vitals tracking. Recommend follow-up for routine screening in 90 days."
 
         return {
-            "brief": {
-                "clinical_brief": brief_text,
+            "clinical_brief": {
+                "narrative": brief_text,
+                "critical_flags": [
+                    {"finding": "Longitudinal Tracking Active", "source_agent": "Risk", "priority": "medium"}
+                ],
                 "medication_summary": f"Patient is stabilized on {len(meds)} prescriptions. No acute drug-drug interactions detected.",
-                "risk_summary": "Risk score: Low-Moderate. Focus: Cardiovascular wellness and metabolic tracking.",
                 "active_diagnoses": cond_list or ["No acute diagnoses"],
                 "lab_highlights": [f"Vital Check: {o['code']['coding'][0]['display']} is within normal limits." for o in obs[:3]],
-                
-                "medication_analysis": {
-                    "summary": f"Comprehensive review of {len(meds)} meds completed. Adherence is optimal.",
-                    "risks": []
-                },
-                "lab_trends": {
-                    "narrative": "Vitals show a 4% improvement in baseline cardiovascular metrics over the last 30 days.",
-                    "flags": []
-                },
-                "diagnosis_clusters": {
-                    "primary": cond_list[0] if cond_list else "Healthy Baseline",
-                    "secondary": cond_list[1] if len(cond_list) > 1 else "None",
-                    "reasoning": "Clustered from longitudinal FHIR observations and episodic triage."
-                },
-                "treatment_pathway": {
-                    "status": "In Progress",
-                    "next_steps": "Continue current care plan with monthly vitals check.",
-                    "success_probability": "92%"
-                },
-                "risk_signals": {
-                    "risk_flags": ["Longitudinal Tracking Active"],
-                    "severity": "Low"
-                }
+                "risk_summary": "Risk score: Low-Moderate. Focus: Cardiovascular wellness and metabolic tracking."
             }
         }

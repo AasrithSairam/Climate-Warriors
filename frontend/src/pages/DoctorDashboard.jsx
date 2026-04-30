@@ -51,7 +51,7 @@ export default function DoctorDashboard({ user }) {
       const aiRes = await axios.get(`http://127.0.0.1:8005/patient/${p.user.id}/context?encounter_type=${user.specialty}`);
       
       // The structure is double nested { brief: { brief: { ... } } } from simulation mode
-      const briefData = aiRes.data.brief.brief || aiRes.data.brief;
+      const briefData = aiRes.data.brief.clinical_brief || aiRes.data.brief;
       setAiSummary(briefData);
       p.filteredRecords = recRes.data.records;
     } catch (e) { console.error(e); }
@@ -254,10 +254,10 @@ export default function DoctorDashboard({ user }) {
                             <div className="markdown-container" style={{lineHeight: 1.6}}>
                               {aiSummary ? (
                                 <div className="flex-col gap-4">
-                                  {aiSummary.clinical_brief && (
+                                  {(aiSummary.narrative || aiSummary.clinical_brief) && (
                                     <div className="p-4 mb-4" style={{background: 'rgba(0,240,255,0.05)', borderRadius: '12px', border: '1px solid rgba(0,240,255,0.2)'}}>
                                       <h4 className="mb-2">Clinical Narrative</h4>
-                                      <ReactMarkdown>{aiSummary.clinical_brief}</ReactMarkdown>
+                                      <ReactMarkdown>{aiSummary.narrative || aiSummary.clinical_brief}</ReactMarkdown>
                                     </div>
                                   )}
 

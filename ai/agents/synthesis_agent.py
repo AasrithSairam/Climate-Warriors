@@ -16,6 +16,7 @@ Rank information by clinical relevance to THIS encounter type.
 Return ONLY valid JSON:
 {{
   "clinical_brief": {{
+    "narrative": "A high-level human-readable clinical summary",
     "critical_flags": [
       {{"finding": str, "source_agent": str, "priority": "urgent|high|medium"}}
     ],
