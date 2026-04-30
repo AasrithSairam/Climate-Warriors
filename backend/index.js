@@ -234,6 +234,16 @@ app.post('/api/upload-record', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: 'Failed to process medical record with AI' });
   }
 });
+app.get('/api/hospitals', async (req, res) => {
+  try {
+    const hospitals = await prisma.hospital.findMany({
+      include: { doctors: { include: { user: true } } }
+    });
+    res.json(hospitals);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch hospitals' });
+  }
+});
 
 // Admin Governance
 // Access Requests
@@ -241,6 +251,8 @@ app.post('/api/requests', upload.single('document'), async (req, res) => {
   const { userId, hospitalId, role, name, age, gender, phone } = req.body;
   const file = req.file;
   
+  console.log("Incoming Access Request:", { userId, hospitalId, role, name, file: file?.filename });
+
   try {
     const request = await prisma.accessRequest.create({
       data: { 
@@ -248,17 +260,17 @@ app.post('/api/requests', upload.single('document'), async (req, res) => {
         hospitalId, 
         role, 
         status: 'PENDING',
-        name,
-        age,
-        gender,
-        phone,
+        name: name || null,
+        age: age || null,
+        gender: gender || null,
+        phone: phone || null,
         documentUrl: file ? `/uploads/${file.filename}` : null
       }
     });
     res.json(request);
   } catch (err) {
     console.error('Request Creation Error:', err);
-    res.status(400).json({ error: 'Failed to create request' });
+    res.status(400).json({ error: 'Failed to create request', details: err.message });
   }
 });
 

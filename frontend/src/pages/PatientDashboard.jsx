@@ -108,12 +108,16 @@ export default function PatientDashboard({ user }) {
     formData.append('hospitalId', modalData.id);
     formData.append('role', 'PATIENT');
     
-    await axios.post(`http://localhost:3001/api/requests`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    
-    alert('Network Admission Request submitted. Hospital admins will review your government document shortly.');
-    setActiveModal(null); setOtp(''); fetchData();
+    try {
+      await axios.post(`http://localhost:3001/api/requests`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      alert('Network Admission Request submitted. Hospital admins will review your government document shortly.');
+      setActiveModal(null); setOtp(''); fetchData();
+    } catch (err) {
+      console.error('Submission Error:', err);
+      alert('Failed to submit request: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   const handleUploadSubmit = async (e) => {
