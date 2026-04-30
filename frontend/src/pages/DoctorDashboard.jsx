@@ -224,6 +224,26 @@ export default function DoctorDashboard({ user }) {
                           <div className="flex gap-4 mt-2 text-sm text-secondary">
                             <span>DOB: {new Date(selectedPatient.user.dob).toLocaleDateString()}</span>
                             <span>Sex: Male</span>
+                            <button 
+                              className="text-xs" 
+                              style={{color: 'var(--danger)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline'}}
+                              onClick={async () => {
+                                if(confirm(`Disconnect ${selectedPatient.user.name} from this hospital network?`)) {
+                                  try {
+                                    // Identify current hospital ID from patients list
+                                    const hId = patients[0]?.hospitalId; 
+                                    await axios.delete(`http://localhost:3001/api/hospitals/${hId}/patients/${selectedPatient.user.id}`);
+                                    alert('Patient disconnected from hospital network.');
+                                    setSelectedPatient(null);
+                                    fetchData();
+                                  } catch (e) {
+                                    alert('Failed to disconnect patient. Ensure you have administrative privileges.');
+                                  }
+                                }
+                              }}
+                            >
+                              Revoke Hospital Access
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -257,7 +277,11 @@ export default function DoctorDashboard({ user }) {
                                   {(aiSummary.narrative || aiSummary.clinical_brief) && (
                                     <div className="p-4 mb-4" style={{background: 'rgba(0,240,255,0.05)', borderRadius: '12px', border: '1px solid rgba(0,240,255,0.2)'}}>
                                       <h4 className="mb-2">Clinical Narrative</h4>
-                                      <ReactMarkdown>{aiSummary.narrative || aiSummary.clinical_brief}</ReactMarkdown>
+                                      <ReactMarkdown>
+                                        {typeof (aiSummary.narrative || aiSummary.clinical_brief) === 'string' 
+                                          ? (aiSummary.narrative || aiSummary.clinical_brief) 
+                                          : JSON.stringify(aiSummary.narrative || aiSummary.clinical_brief, null, 2)}
+                                      </ReactMarkdown>
                                     </div>
                                   )}
 
@@ -470,14 +494,18 @@ export default function DoctorDashboard({ user }) {
                              {aiRecommendation && (
                                <div className="p-4 mt-4 animate-fade-in" style={{background: 'rgba(0,240,255,0.05)', border: '1px dashed var(--primary-color)', borderRadius: '12px'}}>
                                  <h4 className="flex items-center gap-2 mb-2"><Pill size={16}/> Medication Agent Insights</h4>
-                                 <ReactMarkdown className="text-sm">{aiRecommendation}</ReactMarkdown>
+                                  <ReactMarkdown className="text-sm">
+                                    {typeof aiRecommendation === 'string' ? aiRecommendation : JSON.stringify(aiRecommendation, null, 2)}
+                                  </ReactMarkdown>
                                </div>
                              )}
 
                              {aiSummary?.treatment_plan && (
                                <div className="p-4 mt-4 animate-fade-in" style={{background: 'rgba(139, 92, 246, 0.05)', border: '1px dashed #8b5cf6', borderRadius: '12px'}}>
                                  <h4 className="flex items-center gap-2 mb-2"><ShieldCheck size={16}/> Treatment Recovery Steps</h4>
-                                 <ReactMarkdown className="text-sm">{aiSummary.treatment_plan}</ReactMarkdown>
+                                  <ReactMarkdown className="text-sm">
+                                    {typeof aiSummary.treatment_plan === 'string' ? aiSummary.treatment_plan : JSON.stringify(aiSummary.treatment_plan, null, 2)}
+                                  </ReactMarkdown>
                                </div>
                              )}
 

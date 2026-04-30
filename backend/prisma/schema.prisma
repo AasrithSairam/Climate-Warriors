@@ -50,6 +50,8 @@ model AccessRequest {
   gender       String?
   phone        String?
   documentUrl  String?
+  medicalId    String?  // Doctor's registration number
+  specialtyRole String? // Specific role e.g. 'Senior Surgeon'
   
   createdAt    DateTime @default(now())
 

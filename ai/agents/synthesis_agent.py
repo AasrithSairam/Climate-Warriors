@@ -25,16 +25,28 @@ Return ONLY valid JSON:
     "lab_highlights": [str],
     "treatment_context": str,
     "risk_summary": str
-  }},
-  "full_context": {{}},
-  "data_sources": [str],
-  "generated_at": str,
-  "conflicts_resolved": [str]
+  }}
 }}"""
 
+        # Use Gemini 1.5 (More stable quota)
+        import google.generativeai as genai
+        import os
+        import json
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        
         # skip agents that were denied by consent or failed
         active_outputs = [o for o in agent_outputs
                           if o and not o.get("skipped") and "error" not in o]
-
-        user = f"Agent outputs:\n{active_outputs}"
-        return self._call_llm(system, user)
+        
+        user_prompt = f"Agent outputs:\n{active_outputs}"
+        
+        try:
+            response = model.generate_content([system, user_prompt])
+            text = response.text
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            return json.loads(text)
+        except Exception as e:
+            print(f"Synthesis LLM Error: {e}")
+            return {"error": str(e)}

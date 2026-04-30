@@ -138,22 +138,42 @@ app.post('/api/appointments/:id/triage', async (req, res) => {
   res.json({ triage, appt });
 });
 
-// Doctor Dashboard
+// Doctor Dashboard (Manual Assignment Mode)
 app.get('/api/doctors/:id/patients', async (req, res) => {
-  const doctorHospitals = await prisma.hospitalDoctor.findMany({ where: { userId: req.params.id } });
-  const hospitalIds = doctorHospitals.map(dh => dh.hospitalId);
+  try {
+    // 1. Fetch appointments specifically assigned to this doctor
+    const appointments = await prisma.appointment.findMany({
+      where: { doctorId: req.params.id },
+      include: { 
+        patient: {
+          include: { 
+            user: true,
+            medicalRecords: true
+          }
+        }, 
+        hospital: true, 
+        triageData: true 
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-  const patients = await prisma.hospitalPatient.findMany({
-    where: { hospitalId: { in: hospitalIds } },
-    include: { user: true, hospital: true }
-  });
-  
-  const appointments = await prisma.appointment.findMany({
-    where: { doctorId: req.params.id },
-    include: { patient: true, hospital: true, triageData: true }
-  });
+    // 2. Extract unique patients from these manual appointments
+    const patientMap = new Map();
+    appointments.forEach(a => {
+      if (!patientMap.has(a.patientId)) {
+        patientMap.set(a.patientId, {
+          ...a.patient.user,
+          hospitalId: a.hospitalId
+        });
+      }
+    });
 
-  res.json({ patients, appointments });
+    const patients = Array.from(patientMap.values());
+    res.json({ patients, appointments });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch manual patient roster." });
+  }
 });
 
 // Doctor completes appointment / prescribes
@@ -327,6 +347,41 @@ app.get('/api/admins/:id/hospital', async (req, res) => {
   } catch (error) {
     console.error('Admin Override Error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin Disconnect Actions
+app.delete('/api/hospitals/:hId/doctors/:uId', async (req, res) => {
+  const { hId, uId } = req.params;
+  console.log(`DELETE Doctor: Hospital[${hId}] User[${uId}]`);
+  try {
+    const result = await prisma.hospitalDoctor.deleteMany({
+      where: { hospitalId: hId.trim(), userId: uId.trim() }
+    });
+    if (result.count === 0) {
+      console.log("Delete failed: No matching link found");
+      return res.status(404).json({ error: 'No link found to delete' });
+    }
+    res.json({ message: 'Doctor disconnected successfully', count: result.count });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to disconnect doctor' });
+  }
+});
+
+app.delete('/api/hospitals/:hId/patients/:uId', async (req, res) => {
+  const { hId, uId } = req.params;
+  console.log(`DELETE Patient: Hospital[${hId}] User[${uId}]`);
+  try {
+    const result = await prisma.hospitalPatient.deleteMany({
+      where: { hospitalId: hId.trim(), userId: uId.trim() }
+    });
+    if (result.count === 0) {
+      console.log("Delete failed: No matching link found");
+      return res.status(404).json({ error: 'No link found to delete' });
+    }
+    res.json({ message: 'Patient disconnected successfully', count: result.count });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to disconnect patient' });
   }
 });
 

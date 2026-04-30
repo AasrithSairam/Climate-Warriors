@@ -34,22 +34,53 @@ export default function PatientDashboard({ user }) {
   const loc = useLocation();
 
   const fetchData = async () => {
-    const pRes = await axios.get(`http://localhost:3001/api/patients/${user.id}`);
-    const patientData = pRes.data;
-    setProfile(patientData);
-    setProfileForm({ phone: patientData.phone || '', address: patientData.address || '', allergies: patientData.allergies, chronicConditions: patientData.chronicConditions });
-    
-    // Auto-load stored RAG summary
-    const storedSummary = patientData.medicalRecords.find(r => r.type === 'SUMMARY');
-    if (storedSummary) {
-      setAiInsights(storedSummary.content);
-    }
-    
-    const hRes = await axios.get('http://localhost:3001/api/hospitals');
-    setAllHospitals(hRes.data);
-    
-    if (patientData && patientData.medicalRecords.length > 0 && !storedSummary && !aiInsights) {
-      generateInsights(patientData);
+    try {
+      const pRes = await axios.get(`http://localhost:3001/api/patients/${user.id}`);
+      const patientData = pRes.data;
+      if (!patientData) throw new Error("Patient profile not found.");
+      
+      setProfile(patientData);
+      setProfileForm({ 
+        phone: patientData.phone || '', 
+        address: patientData.address || '', 
+        allergies: patientData.allergies || '', 
+        chronicConditions: patientData.chronicConditions || '' 
+      });
+      
+      // Auto-load stored RAG summary
+      const storedSummary = patientData.medicalRecords?.find(r => r.type === 'SUMMARY');
+      if (storedSummary) {
+        let content = storedSummary.content;
+        try {
+          // Deep parse: Handle strings that are stringified multiple times
+          let parsed = typeof content === 'string' ? JSON.parse(content) : content;
+          if (typeof parsed === 'string') parsed = JSON.parse(parsed); 
+
+          // Drill down into nested clinical_brief if necessary
+          const finalData = parsed.clinical_brief || parsed;
+          const narrative = finalData.narrative || finalData.clinical_brief || "";
+
+          if (narrative) {
+            setAiInsights(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
+            setAgentData(finalData);
+          } else {
+            setAiInsights(content);
+          }
+        } catch (e) {
+          setAiInsights(content);
+        }
+      }
+      
+      const hRes = await axios.get('http://localhost:3001/api/hospitals');
+      setAllHospitals(hRes.data || []);
+      
+      if (patientData && (patientData.medicalRecords?.length || 0) > 0 && !storedSummary && !aiInsights) {
+        generateInsights(patientData);
+      }
+    } catch (err) {
+      console.error("Critical error in fetchData:", err);
+      // Fallback to minimal profile if backend fails
+      setProfile({ name: user.name, id: user.id, medicalRecords: [], patientAppointments: [], patientHospitals: [] });
     }
   };
 
@@ -59,10 +90,14 @@ export default function PatientDashboard({ user }) {
       // Try to fetch from Orchestrator (Simulation Mode)
       const res = await axios.get(`http://localhost:8005/patient/${user.id}/context?encounter_type=general`);
       
-      // The structure is double nested { brief: { brief: { ... } } } from simulation mode
-      const briefData = res.data.brief.brief || res.data.brief;
-      setAgentData(briefData);
-      setAiInsights(briefData.clinical_brief);
+      let briefData = res.data?.brief?.brief || res.data?.brief || {};
+      if (typeof briefData === 'string') {
+        try { briefData = JSON.parse(briefData); } catch(e) {}
+      }
+      
+      const finalData = briefData.clinical_brief || briefData;
+      setAgentData(finalData);
+      setAiInsights(finalData.narrative || finalData.clinical_brief || "AI Briefing not available.");
     } catch (e) { 
       console.warn("AI Service unavailable, triggering Super Demo Mode.");
       
@@ -225,7 +260,7 @@ export default function PatientDashboard({ user }) {
 
   if (!profile) return <div className="flex justify-center items-center h-full"><Activity className="glow-effect text-primary" size={48} /></div>;
 
-  const joinedHospitalIds = profile.patientHospitals.map(ph => ph.hospitalId);
+  const joinedHospitalIds = (profile.patientHospitals || []).map(ph => ph.hospitalId);
   const unjoinedHospitals = allHospitals.filter(h => !joinedHospitalIds.includes(h.id));
 
   const navItem = (path, icon, label) => {
@@ -299,8 +334,12 @@ export default function PatientDashboard({ user }) {
                     </div>
                   </div>
                   {isSynthesizing ? <p className="text-sm glow-text">Multi-Agent Orchestrator is synthesizing records...</p> : (
-                    <div className="text-sm" style={{lineHeight: 1.6, color: 'var(--text-primary)'}}>
-                      {aiInsights ? <ReactMarkdown>{aiInsights}</ReactMarkdown> : <p>No insights generated.</p>}
+                    <div className="text-sm" style={{lineHeight: 1.6, color: 'var(--text-primary)', whiteSpace: 'pre-wrap'}}>
+                      {aiInsights ? (
+                        <ReactMarkdown>
+                          {typeof aiInsights === 'string' ? aiInsights : JSON.stringify(aiInsights, null, 2)}
+                        </ReactMarkdown>
+                      ) : <p>No insights generated. Click Re-Summarize to sync.</p>}
                     </div>
                   )}
                 </div>
@@ -310,42 +349,44 @@ export default function PatientDashboard({ user }) {
                   {agentData && (
                     <div className="glass-card stagger-1" style={{borderLeft: '4px solid var(--warning)'}}>
                       <h4 className="mb-2 flex items-center gap-2"><Pill size={16} color="var(--warning)"/> Medication Intelligence</h4>
-                      <p className="text-sm">{agentData.medication_analysis?.summary || "Analyzing regimen..."}</p>
+                      <p className="text-sm">{agentData.medication_summary || "Analyzing regimen..."}</p>
                     </div>
                   )}
 
                   {agentData && (
                     <div className="glass-card stagger-2" style={{borderLeft: '4px solid var(--success)'}}>
                       <h4 className="mb-2 flex items-center gap-2"><Activity size={16} color="var(--success)"/> Lab & Vital Trends</h4>
-                      <p className="text-sm">{agentData.lab_trends?.narrative || "Calculating trajectories..."}</p>
+                      <div className="flex flex-col gap-1">
+                        {agentData.lab_highlights?.map((h, i) => (
+                          <p key={i} className="text-xs">• {h}</p>
+                        )) || <p className="text-sm">Calculating trajectories...</p>}
+                      </div>
                     </div>
                   )}
 
                   {agentData && (
                     <div className="glass-card stagger-3" style={{borderLeft: '4px solid var(--primary-color)'}}>
                       <h4 className="mb-2 flex items-center gap-2"><Folder size={16} color="var(--primary-color)"/> Diagnostic Clusters</h4>
-                      <p className="text-sm"><strong>Primary:</strong> {agentData.diagnosis_clusters?.primary}</p>
-                      <p className="text-xs text-secondary mt-1">{agentData.diagnosis_clusters?.reasoning}</p>
+                      <p className="text-sm"><strong>Active:</strong> {agentData.active_diagnoses?.join(", ") || "Clustering signals..."}</p>
                     </div>
                   )}
 
                   {agentData && (
                     <div className="glass-card stagger-4" style={{borderLeft: '4px solid #8b5cf6'}}>
                       <h4 className="mb-2 flex items-center gap-2"><ShieldCheck size={16} color="#8b5cf6"/> Treatment Pathway</h4>
-                      <p className="text-sm">{agentData.treatment_pathway?.next_steps}</p>
-                      <div className="mt-2 flex justify-between items-center">
-                        <span className="text-xs font-bold">Success Probability:</span>
-                        <span className="badge btn-secondary">{agentData.treatment_pathway?.success_probability}</span>
-                      </div>
+                      <p className="text-sm">{agentData.treatment_context || "Synthesizing care plan..."}</p>
                     </div>
                   )}
 
                   {agentData && (
                     <div className="glass-card stagger-5" style={{borderLeft: '4px solid var(--danger)'}}>
                       <h4 className="mb-2 flex items-center gap-2"><Info size={16} color="var(--danger)"/> Risk Signals (ML)</h4>
+                      <p className="text-xs mb-2">{agentData.risk_summary}</p>
                       <div className="flex gap-2 flex-wrap">
-                        {agentData.risk_signals?.risk_flags?.map(f => (
-                          <span key={f} className="badge btn-danger" style={{fontSize: '0.7rem'}}>{f}</span>
+                        {agentData.critical_flags?.map((f, i) => (
+                          <span key={i} className="badge btn-danger" style={{fontSize: '0.7rem'}} title={f.source_agent}>
+                            {f.priority?.toUpperCase()}: {f.finding}
+                          </span>
                         )) || <p className="text-xs text-secondary">No acute risks detected.</p>}
                       </div>
                     </div>
@@ -355,12 +396,12 @@ export default function PatientDashboard({ user }) {
 
               <h3 className="mb-4">Active & Upcoming Visits</h3>
               <div className="flex-col gap-4">
-                {profile.patientAppointments.map(a => (
+                {(profile.patientAppointments || []).map(a => (
                   <div key={a.id} className="glass-card" style={{padding: '20px'}}>
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <strong style={{fontSize: '1.1rem'}}>{a.doctor.name} ({a.doctor.specialty})</strong>
-                        <p className="text-sm text-secondary mt-1"><Calendar size={14} className="inline mr-1"/> {a.appointmentDate} @ {a.timeSlot} | {a.hospital.name}</p>
+                        <strong style={{fontSize: '1.1rem'}}>{a.doctor?.name || "Doctor"} ({a.doctor?.specialty || "Specialist"})</strong>
+                        <p className="text-sm text-secondary mt-1"><Calendar size={14} className="inline mr-1"/> {a.appointmentDate} @ {a.timeSlot} | {a.hospital?.name || "Facility"}</p>
                       </div>
                       <span className="badge" style={{fontSize: '0.85rem'}}>{a.status}</span>
                     </div>
@@ -378,7 +419,7 @@ export default function PatientDashboard({ user }) {
               <h2 className="text-gradient">My Health Timeline</h2>
               <div className="glass-card mt-4">
                 <div className="timeline">
-                  {[...profile.medicalRecords]
+                  {[...(profile.medicalRecords || [])]
                     .filter(r => {
                       const title = r.title.toLowerCase();
                       const isHandwritten = title.includes("transcribed") || r.content.includes("handwritten");
@@ -458,7 +499,7 @@ export default function PatientDashboard({ user }) {
                 <div className="mt-8 pt-8 border-t animate-fade-in" style={{borderColor: '#e2e8f0'}}>
                   <h3 className="mb-4">Browsing: {activeFolder}</h3>
                   <div className="flex-col gap-2">
-                    {profile.medicalRecords.filter(r => {
+                    {(profile.medicalRecords || []).filter(r => {
                       const currentYear = new Date().getFullYear();
                       const recordYear = new Date(r.date).getFullYear();
                       const isRecent = recordYear >= currentYear - 10;
@@ -489,7 +530,7 @@ export default function PatientDashboard({ user }) {
               <div className="glass-card mb-8" style={{borderTop: '4px solid var(--warning)'}}>
                 <h3 className="mb-4">Recent Prescriptions (Last 5 Years)</h3>
                 <div className="flex-col gap-3">
-                  {profile.medicalRecords
+                  {(profile.medicalRecords || [])
                     .filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() >= new Date().getFullYear() - 5)
                     .map(m => (
                     <div key={m.id} className="p-4 flex justify-between items-center" style={{background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px'}}>
@@ -503,7 +544,7 @@ export default function PatientDashboard({ user }) {
                       </div>
                     </div>
                   ))}
-                  {profile.medicalRecords.filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() >= new Date().getFullYear() - 5).length === 0 && (
+                  {(profile.medicalRecords || []).filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() >= new Date().getFullYear() - 5).length === 0 && (
                     <p className="text-sm text-secondary">No recent prescriptions recorded.</p>
                   )}
                 </div>
@@ -512,7 +553,7 @@ export default function PatientDashboard({ user }) {
               <div className="glass-card">
                 <h3 className="mb-4">Historical Medication History</h3>
                 <div className="flex-col gap-2">
-                  {profile.medicalRecords
+                  {(profile.medicalRecords || [])
                     .filter(r => r.type === 'MEDICATION' && new Date(r.date).getFullYear() < new Date().getFullYear() - 5)
                     .sort((a,b) => new Date(b.date) - new Date(a.date))
                     .map(m => (
@@ -535,8 +576,8 @@ export default function PatientDashboard({ user }) {
                 </div>
                 {!hospitalFilter && (
                    <div className="flex gap-4">
-                     <div className="text-center"><p className="text-sm text-secondary m-0">Connected Facilities</p><strong style={{fontSize:'1.2rem'}}>{profile.patientHospitals.length}</strong></div>
-                     <div className="text-center"><p className="text-sm text-secondary m-0">Network Doctors</p><strong style={{fontSize:'1.2rem'}}>{profile.patientHospitals.reduce((acc, ph) => acc + ph.hospital.doctors.length, 0)}</strong></div>
+                     <div className="text-center"><p className="text-sm text-secondary m-0">Connected Facilities</p><strong style={{fontSize:'1.2rem'}}>{(profile.patientHospitals || []).length}</strong></div>
+                     <div className="text-center"><p className="text-sm text-secondary m-0">Network Doctors</p><strong style={{fontSize:'1.2rem'}}>{(profile.patientHospitals || []).reduce((acc, ph) => acc + (ph.hospital?.doctors?.length || 0), 0)}</strong></div>
                    </div>
                 )}
               </div>
@@ -548,8 +589,8 @@ export default function PatientDashboard({ user }) {
                       <div style={{padding: '24px'}}>
                         <div className="flex justify-between items-start mb-4">
                           <div>
-                            <h3 style={{margin:0}}>{ph.hospital.name}</h3>
-                            <p className="text-sm text-secondary mt-1"><MapPin size={12} className="inline mr-1"/>{ph.hospital.location}</p>
+                            <h3 style={{margin:0}}>{ph.hospital?.name || "Facility"}</h3>
+                            <p className="text-sm text-secondary mt-1"><MapPin size={12} className="inline mr-1"/>{ph.hospital?.location || "Location"}</p>
                           </div>
                           <button className="btn-secondary" style={{padding: '4px 8px', borderRadius: '4px'}} onClick={() => {setModalData(ph.hospital); setActiveModal('HOSPITAL_INFO')}}><Info size={16}/></button>
                         </div>
