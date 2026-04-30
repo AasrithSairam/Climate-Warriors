@@ -19,13 +19,21 @@ export default function DoctorDashboard({ user }) {
   const [isChatting, setIsChatting] = useState(false);
 
   const [activeTab, setActiveTab] = useState('SUMMARY'); // SUMMARY, TIMELINE, RECORDS, PRESCRIBE, CHAT
+  const [allHospitals, setAllHospitals] = useState([]);
 
   const loc = useLocation();
 
   const fetchData = async () => {
-    const res = await axios.get(`http://localhost:3001/api/doctors/${user.id}/patients`);
-    setPatients(res.data.patients);
-    setAppointments(res.data.appointments);
+    try {
+      const res = await axios.get(`http://localhost:3001/api/doctors/${user.id}/patients`);
+      setPatients(res.data.patients || []);
+      setAppointments(res.data.appointments || []);
+      
+      const hRes = await axios.get('http://localhost:3001/api/hospitals');
+      setAllHospitals(hRes.data || []);
+    } catch (e) {
+      console.error("DoctorDashboard: Failed to fetch data", e);
+    }
   };
 
   useEffect(() => { fetchData(); }, [user.id]);
