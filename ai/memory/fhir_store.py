@@ -12,6 +12,7 @@ class FHIRStore:
         return conn
 
     def get_medications(self, patient_id: str) -> list[dict]:
+        print(f"DEBUG: Fetching medications for patient_id: {patient_id}")
         conn = self._get_conn()
         cur = conn.cursor()
         cur.execute("""
@@ -20,6 +21,7 @@ class FHIRStore:
             ORDER BY date DESC
         """, (patient_id,))
         rows = cur.fetchall()
+        print(f"DEBUG: Found {len(rows)} medication records")
         return [
             {
                 "resourceType": "MedicationRequest",
@@ -33,20 +35,11 @@ class FHIRStore:
         ]
 
     def get_observations(self, patient_id: str, code: str = None) -> list[dict]:
+        print(f"DEBUG: Fetching observations for patient_id: {patient_id}")
         conn = self._get_conn()
         cur = conn.cursor()
         
-        # In our SQLite, observations come from TriageData
-        # Mapping common LOINC codes to our TriageData columns for the agents
-        LOINC_MAP = {
-            "2160-0": "creatinine", # Mocked if missing
-            "4548-4": "hba1c",      # Mocked if missing
-            "8867-4": "heartRate",
-            "2708-6": "spo2",
-            "2339-0": "sugar",
-            "85354-9": "bp"
-        }
-
+        # 1. Fetch from TriageData (Dashboard data)
         cur.execute("""
             SELECT t.* FROM TriageData t
             JOIN Appointment a ON t.appointmentId = a.id
@@ -55,7 +48,26 @@ class FHIRStore:
         """, (patient_id,))
         triage_rows = cur.fetchall()
         
+        # 2. Fetch from MedicalRecord (Ingested FHIR data)
+        cur.execute("""
+            SELECT * FROM MedicalRecord
+            WHERE patientId = ? AND (type = 'NOTE' OR type = 'SCAN')
+            ORDER BY date DESC
+        """, (patient_id,))
+        record_rows = cur.fetchall()
+        print(f"DEBUG: Found {len(triage_rows)} triage records and {len(record_rows)} clinical notes")
+        
         observations = []
+        # Process ingested notes as basic observations
+        for r in record_rows:
+            observations.append({
+                "resourceType": "Observation",
+                "id": str(r["id"]),
+                "code": {"coding": [{"system": "http://aurahealth.ai", "code": "generic-note", "display": r["title"]}]},
+                "valueString": r["content"],
+                "effectiveDateTime": r["date"]
+            })
+
         for t in triage_rows:
             # Heart Rate
             if t["heartRate"]:
@@ -95,14 +107,16 @@ class FHIRStore:
         return observations
 
     def get_conditions(self, patient_id: str) -> list[dict]:
+        print(f"DEBUG: Fetching conditions for patient_id: {patient_id}")
         conn = self._get_conn()
         cur = conn.cursor()
         cur.execute("""
             SELECT * FROM MedicalRecord
-            WHERE patientId = ? AND type = 'NOTE'
+            WHERE patientId = ? AND type = 'CONDITION'
             ORDER BY date DESC
         """, (patient_id,))
         rows = cur.fetchall()
+        print(f"DEBUG: Found {len(rows)} condition records")
         return [
             {
                 "resourceType": "Condition",
@@ -115,6 +129,7 @@ class FHIRStore:
         ]
 
     def get_procedures(self, patient_id: str) -> list[dict]:
+        print(f"DEBUG: Fetching procedures for patient_id: {patient_id}")
         conn = self._get_conn()
         cur = conn.cursor()
         cur.execute("""
@@ -123,6 +138,7 @@ class FHIRStore:
             ORDER BY date DESC
         """, (patient_id,))
         rows = cur.fetchall()
+        print(f"DEBUG: Found {len(rows)} procedure/scan records")
         return [
             {
                 "resourceType": "Procedure",

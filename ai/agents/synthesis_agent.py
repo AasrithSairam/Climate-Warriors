@@ -10,7 +10,7 @@ class SynthesisAgent(BaseAgent):
     def run(self, agent_outputs: list[dict]) -> dict:
         system = f"""You are a clinical synthesis AI generating a
 point-of-care brief for a clinician. The encounter type is: {self.encounter_type}.
-
+Keep the narrative extremely concise (max 3 sentences).
 Merge the outputs from all specialist agents. Deduplicate overlapping findings.
 Rank information by clinical relevance to THIS encounter type.
 Return ONLY valid JSON:
